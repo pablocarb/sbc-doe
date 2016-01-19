@@ -155,12 +155,12 @@ for des in range(0, len(doe)):
         libr.append(ll)
     of.close()
     librl.append(libr)
-    if not vars(arg)['i']:
-        dinfor =  " Design %d; Model S^%d; Library size: %d" % (i, i+1, len(libr))
+    if vars(arg)['i']:
+        dinfor =  " Design %d; Model S^%d; Library size: %d" % (des, des+1, len(libr))
     else:
-        dinfor = " Design %d; Model S^%d; Library size: %d; Segments: %d" % (i, i+1, len(libr), len(segments(libr)))
+        dinfor = " Design %d; Model S^%d; Library size: %d; Segments: %d" % (des, des+1, len(libr), len(segments(libr)))
     print(dinfor)
-    finfow.write(finfor+'\n')
+    finfow.write(dinfor+'\n')
 finfow.close()
 
 

@@ -1,8 +1,9 @@
-p1	1
-g1	4
-p2	4
-g2	4
-p3	4
-g3	1
-p4	2
-g4	2
+# factor levels positional
+p1	1	0
+g1	4	1
+p2	4	0
+g2	4	1
+p3	4	0
+g3	1	1
+p4	2	0
+g4	2	1

@@ -16,10 +16,14 @@ def construct(f):
             positional = int(m[2])
         except:
             positional = 0
-        ll = np.log2(nlevels)
-        if ll != int(ll):
-            raise 
-        ct.append((factor, nlevels, positional))
+        try:
+            pool = int(m[3])
+        except:
+            pool = 0
+#        ll = np.log2(nlevels)
+#        if ll != int(ll):
+#            raise 
+        ct.append((factor, nlevels, positional, pool))
     return ct
 
 def getfactors(ct, permut=False):
@@ -43,20 +47,37 @@ def getfactors(ct, permut=False):
     return factors, nlevels, npos
 
 # Assume promoters "p"  and count number of segments
-def segments(libr):
+def segments(libr, ct):
     col = set()
     prom = set()
     for l in libr:
         x = ''
         pr = []
-        for ll in l:
+        for i in range(0, len(l)):
+            ll = l[i]
+            cti = ct[i][1]
             m = ll.split('_')
             if ll.startswith('p'):
-                if m[1] == '1':
+                newsegment = False
+                # If promoter has only 1 level, we assume always on
+                if cti == 1:
+                    newsegment = True
+                    plevel = 2 # level 1 means off, level 2 on
+                # else, level 1 means promoter off
+                else:
+                    # Promoter 1 is always on (add one to the level, to be improved in a more general way)
+                    if m[0] == 'p1':
+                        newsegment = True
+                        plevel = int(m[1]) + 1
+                    elif m[1] != '1':
+                        newsegment = True
+                        plevel = int(m[1])
+                if newsegment:
                     if x != '':
                         pr.append(x)
                         col.add(x)
-                    x = ''
+#                    x = ''
+                    x = str(plevel) # Put only the promoter level?
             elif ll.startswith('g'):
                 x += ll
         col.add(x)
@@ -73,7 +94,10 @@ def segments(libr):
         if l not in sta:
             sta[l] = 0
         sta[l] += 1
-    return prom
+#    import pdb
+#    pdb.set_trace()
+    return col
+#    return prom
 
 
 
@@ -90,7 +114,7 @@ if 'f' not in vars(arg):
     sys.exit()
 f = vars(arg)['f']
 p = vars(arg)['p']
-if not path.exists(f):
+if f is None or not path.exists(f):
     parser.print_help()
     sys.exit()
 wd = path.dirname(path.realpath(__file__))
@@ -141,11 +165,21 @@ for des in range(0, len(doe)):
     fname = designid+'.d'+str(des)
     of = open(fname, 'w')
     libr = []
+    libscr = []
     for x in range(0, n):
         ll = []
+        screen = 1
         for y in ct:
-            # Randomize permutations using a latin square
             fa = y[0]
+            le = y[1]
+            po = y[2]
+            pl = y[3]
+            de = ndes[fa][x]
+            # Screening pool?
+            if pl > 0:
+                if de > 1 or (le  == 1 and de > 0):
+                    screen *= pl                        
+            # Randomize permutations using a latin square
             if fa in npos:
                 perm = ndes['pos'][x]
                 fa = npos[lat[perm-1][npos.index(fa)]-1]
@@ -153,12 +187,15 @@ for des in range(0, len(doe)):
             ll.append("%s_%d" %  (fa, ndes[fa][x],))
         of.write('\n')
         libr.append(ll)
+        if screen > 1:
+            screen *= 3 # if screening a pool, multiply by 3
+        libscr.append(screen)
     of.close()
     librl.append(libr)
     if vars(arg)['i']:
         dinfor =  " Design %d; Model S^%d; Library size: %d" % (des, des+1, len(libr))
     else:
-        dinfor = " Design %d; Model S^%d; Library size: %d; Segments: %d" % (des, des+1, len(libr), len(segments(libr)))
+        dinfor = " Design %d; Model S^%d; Library size: %d; Segments: %d; Screening size: %d" % (des, des+1, len(libr), len(segments(libr, ct)), np.sum(libscr))
     print(dinfor)
     finfow.write(dinfor+'\n')
 finfow.close()

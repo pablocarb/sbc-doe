@@ -100,6 +100,54 @@ def segments(libr, ct):
 #    return prom
 
 
+def save_design(design, ct, fname, lat):
+    ndes = {}
+    n = 0
+    # Read the design for each factor
+    for x in ct:
+        fact = x[0]
+        if fact in design['design'].keys:
+            ndes[fact] = np.array(design['design'][fact])
+            n = len(ndes[fact])
+        else:
+            ndes[fact] = np.array([])
+    for x in ct:
+        fact = x[0]
+        if len(ndes[fact]) == 0:
+            ndes[fact] = np.repeat(1, n)
+    # Add positional factor
+    if 'pos' in design['design'].keys:
+        ndes['pos'] = np.array(design['design']['pos'])
+    # Store designs
+    of = open(fname, 'w')
+    libr = []
+    libscr = []
+    for x in range(0, n):
+        ll = []
+        screen = 1
+        for y in ct:
+            fa = y[0]
+            le = y[1]
+            po = y[2]
+            pl = y[3]
+            de = ndes[fa][x]
+            # Screening pool?
+            if pl > 0:
+                if de > 1 or (le  == 1 and de > 0):
+                    screen *= pl                        
+            # Randomize permutations using a latin square
+            if fa in npos:
+                perm = ndes['pos'][x]
+                fa = npos[lat[perm-1][npos.index(fa)]-1]
+            of.write("%s_%d\t" % (fa, ndes[fa][x],))
+            ll.append("%s_%d" %  (fa, ndes[fa][x],))
+        of.write('\n')
+        libr.append(ll)
+        if screen > 1:
+            screen *= 3 # if screening a pool, multiply by 3
+        libscr.append(screen)
+    of.close()
+    return libr, libscr
 
 parser = argparse.ArgumentParser(description='SBC-DeO. Pablo Carbonell, SYNBIOCHEM, 2016')
 parser.add_argument('-p', action='store_true',
@@ -108,6 +156,10 @@ parser.add_argument('-f',
                     help='Input file with specifications')
 parser.add_argument('-i', action='store_true',
                     help='Ignore segment calculations based on promoters')
+parser.add_argument('-r', action='store_false',
+                    help='No regular fractional factorial design')
+parser.add_argument('-o', action='store_false',
+                    help='No orthogonal array design')
 arg = parser.parse_args()
 if 'f' not in vars(arg):
     parser.print_help()
@@ -141,63 +193,28 @@ else:
     dinfo = "SBC-DoE; Factors: %d; Levels: %d; Positional: %d [Full permutations]" % (len(factors), np.prod(nlevels), len(npos))
 print(dinfo)
 finfow.write(dinfo+'\n')
-doe = conn.r.doe1(factors=np.array(factors), nlevels=np.array(nlevels), timeout=30)
-librl = []
-for des in range(0, len(doe)):
-    ndes = {}
-    n = 0
-    # Read the design for each factor
-    for x in ct:
-        fact = x[0]
-        if fact in doe[des]['design'].keys:
-            ndes[fact] = np.array(doe[des]['design'][fact])
-            n = len(ndes[fact])
+if vars(arg)['r']:
+    doe1 = conn.r.doe1(factors=np.array(factors), nlevels=np.array(nlevels), timeout=30)
+    for des in range(0, len(doe1)):
+        fname = designid+'.d'+str(des)
+        libr, libscr = save_design(doe1[des], ct, fname, lat)
+        if vars(arg)['i']:
+            dinfor =  " Design %d; Model S^%d; Library size: %d" % (des, des+1, len(libr))
         else:
-            ndes[fact] = np.array([])
-    for x in ct:
-        fact = x[0]
-        if len(ndes[fact]) == 0:
-            ndes[fact] = np.repeat(1, n)
-    # Add positional factor
-    if 'pos' in doe[des]['design'].keys:
-        ndes['pos'] = np.array(doe[des]['design']['pos'])
-    # Store designs
-    fname = designid+'.d'+str(des)
-    of = open(fname, 'w')
-    libr = []
-    libscr = []
-    for x in range(0, n):
-        ll = []
-        screen = 1
-        for y in ct:
-            fa = y[0]
-            le = y[1]
-            po = y[2]
-            pl = y[3]
-            de = ndes[fa][x]
-            # Screening pool?
-            if pl > 0:
-                if de > 1 or (le  == 1 and de > 0):
-                    screen *= pl                        
-            # Randomize permutations using a latin square
-            if fa in npos:
-                perm = ndes['pos'][x]
-                fa = npos[lat[perm-1][npos.index(fa)]-1]
-            of.write("%s_%d\t" % (fa, ndes[fa][x],))
-            ll.append("%s_%d" %  (fa, ndes[fa][x],))
-        of.write('\n')
-        libr.append(ll)
-        if screen > 1:
-            screen *= 3 # if screening a pool, multiply by 3
-        libscr.append(screen)
-    of.close()
-    librl.append(libr)
-    if vars(arg)['i']:
-        dinfor =  " Design %d; Model S^%d; Library size: %d" % (des, des+1, len(libr))
-    else:
-        dinfor = " Design %d; Model S^%d; Library size: %d; Segments: %d; Screening size: %d" % (des, des+1, len(libr), len(segments(libr, ct)), np.sum(libscr))
-    print(dinfor)
-    finfow.write(dinfor+'\n')
+            dinfor = " Design %d; Model S^%d; Library size: %d; Segments: %d; Screening size: %d" % (des, des+1, len(libr), len(segments(libr, ct)), np.sum(libscr))
+        print(dinfor)
+        finfow.write(dinfor+'\n')
+if vars(arg)['o']:
+    doe2 = conn.r.doe2(factors=np.array(factors), nlevels=np.array(nlevels), timeout=30)
+    for des in range(0, len(doe2)):
+        fname = designid+'.oad'+str(des)
+        libr, libscr = save_design(doe2[des], ct, fname, lat)
+        if vars(arg)['i']:
+            dinfor = " Orthogonal Array Design; Library size: %d" % (len(librs),)
+        else:
+            dinfor = " Orthogonal Array Design; Library size: %d; Segments: %d; Screening size: %d" % (len(libr), len(segments(libr, ct)), np.sum(libscr))
+        print(dinfor)
+        finfow.write(dinfor+'\n')
 finfow.close()
 
 

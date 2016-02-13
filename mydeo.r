@@ -25,6 +25,7 @@ permut <- function(n, ptype='latin') {
     }
 }
 
+# Regular factorial design with implicit S model
 doe1 <- function(factors, nlevels, timeout=5) {
     require('planor')
     require('R.utils')
@@ -68,4 +69,13 @@ doe1 <- function(factors, nlevels, timeout=5) {
         res <- res+2
     }
     return(const.ffd)
+}
+
+# Orthogonal arrays
+doe2 <- function(factors, nlevels, timeout=5) {
+    require('DoE.base')
+    const.oa <- list()
+    des <- oa.design(factor.names=factors, nlevels=nlevels)
+    const.oa[[1]] <- list(design=des, resolution=NULL)
+    return(const.oa)
 }

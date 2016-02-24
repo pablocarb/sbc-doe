@@ -1,3 +1,13 @@
+'''
+Unique (c) University of Manchester 2015
+
+Unique is licensed under the MIT License.
+
+To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
+
+@author:  Pablo Carbonell
+@description: SYNBIOCHEM design of experiments
+'''
 import numpy as np
 from os import path
 import pyRserve
@@ -20,11 +30,71 @@ def construct(f):
             pool = int(m[3])
         except:
             pool = 0
+        # Degeneration: higher levels go to 1
+        try:
+            deg = int(m[4])
+        except:
+            deg = 0
 #        ll = np.log2(nlevels)
 #        if ll != int(ll):
 #            raise 
-        ct.append((factor, nlevels, positional, pool))
+        ct.append((factor, nlevels, positional, pool, deg))
     return ct
+
+
+def convert_construct(xct):
+    rid = {}
+    ct = []
+    for p in sorted(xct):
+        levels = xct[p]['levels']
+        comp = xct[p]['component']
+        # This is an exception for promoters, need to be improved
+        deg = 0
+        if comp  == 'promoter':
+            deg = len(levels) - len(filter( lambda h: h is None, levels))
+            if len(levels) > deg:
+                deg += 1
+        elif comp == 'gene':
+            deg = len(levels) - len(filter( lambda h: h is None, levels))
+            if len(levels) ==  deg:
+                deg = 0
+        pos = xct[p]['positional']
+        if pos is None:
+            pos = 0
+        cid = str(xct[p]['component'])+str(p)
+        i = 1
+        if comp == 'promoter' and len(levels) > len(filter( lambda h: h is None, levels)):
+            rid[cid+'_'+str(i)] = None
+            i += 1
+        for x in range(0, len(levels)):
+            if levels[x] is not None:
+                rid[cid+'_'+str(i)] = levels[x]
+                i += 1
+        ct.append((cid, len(levels), str(pos), 0, deg))
+        
+    return ct, rid
+
+def read_excel(e):
+    import openpyxl
+    wb = openpyxl.load_workbook(e)
+    xl = wb.get_sheet_by_name(wb.get_sheet_names()[0])
+    nl = xl.get_highest_row()
+    fact = {}
+    for r in range(1, nl):
+        factor = int(xl.cell(row=r, column= 0).value)
+        positional = xl.cell(row=r, column= 1).value
+        component = xl.cell(row=r, column= 2).value
+        part = xl.cell(row=r, column= 3).value
+        if factor not in fact:
+            fact[factor] = {'positional': positional,
+                            'component': component,
+                            'levels': []}
+        if part == 'blank':
+            part = None
+        fact[factor]['levels'].append(part)
+        
+    return fact
+
 
 def getfactors(ct, permut=False):
     factors =[]
@@ -35,7 +105,7 @@ def getfactors(ct, permut=False):
         f = x[0]
         l = x[1]
         try:
-            p = x[2]
+            p = int(x[2])
         except:
             p = 0
         if l>1:
@@ -94,13 +164,13 @@ def segments(libr, ct):
         if l not in sta:
             sta[l] = 0
         sta[l] += 1
-#    import pdb
-#    pdb.set_trace()
     return col
 #    return prom
 
 
-def save_design(design, ct, fname, lat):
+    
+
+def save_design(design, ct, fname, lat, rid = None):
     ndes = {}
     n = 0
     # Read the design for each factor
@@ -111,6 +181,14 @@ def save_design(design, ct, fname, lat):
             n = len(ndes[fact])
         else:
             ndes[fact] = np.array([])
+    for x in ct:
+        fact = x[0]
+        nlevels = x[1]
+        dege = x[4]
+        if dege > 0:
+            for i in range(0, len(ndes[fact])):
+                if ndes[fact][i] > dege:
+                    ndes[fact][i] = 1
     for x in ct:
         fact = x[0]
         if len(ndes[fact]) == 0:
@@ -136,11 +214,16 @@ def save_design(design, ct, fname, lat):
                 if de > 1 or (le  == 1 and de > 0):
                     screen *= pl                        
             # Randomize permutations using a latin square
+            faid = "%s_%d" % (fa, ndes[fa][x],)
             if fa in npos:
                 perm = ndes['pos'][x]
                 fa = npos[lat[perm-1][npos.index(fa)]-1]
-            of.write("%s_%d\t" % (fa, ndes[fa][x],))
-            ll.append("%s_%d" %  (fa, ndes[fa][x],))
+                faid = "%s_%d" % (fa, ndes[fa][x],)
+            if rid is not None:
+                faid = rid[faid]
+            if faid is not None:
+                of.write("%s\t" % (faid,))
+                ll.append("%s" %  (faid,))
         of.write('\n')
         libr.append(ll)
         if screen > 1:
@@ -153,26 +236,36 @@ parser = argparse.ArgumentParser(description='SBC-DeO. Pablo Carbonell, SYNBIOCH
 parser.add_argument('-p', action='store_true',
                     help='Full positional permutation (default: random latin square)')
 parser.add_argument('-f', 
-                    help='Input file with specifications')
+                    help='Input file with specifications (old format)')
+parser.add_argument('-e', 
+                    help='Input file with specifications (excel format)')
 parser.add_argument('-i', action='store_true',
                     help='Ignore segment calculations based on promoters')
 parser.add_argument('-r', action='store_false',
                     help='No regular fractional factorial design')
 parser.add_argument('-o', action='store_false',
                     help='No orthogonal array design')
+parser.add_argument('-x', action='store_true',
+                    help='Randomize orthogonal array design')
 arg = parser.parse_args()
-if 'f' not in vars(arg):
+if 'f' not in vars(arg) and 'e' not in vars(arg):
     parser.print_help()
     sys.exit()
 f = vars(arg)['f']
+e = vars(arg)['e']
+if f is not None:
+    ct = construct(f)
+    rid = None
+else:
+    if e is None or not path.exists(e):
+        parser.print_help()
+        sys.exit()
+    xct = read_excel(e)
+    ct, rid = convert_construct(xct)
 p = vars(arg)['p']
-if f is None or not path.exists(f):
-    parser.print_help()
-    sys.exit()
 wd = path.dirname(path.realpath(__file__))
 conn = pyRserve.connect()
 conn.r.source(path.join(wd, 'mydeo.r'))
-ct = construct(f)
 factors, nlevels, npos = getfactors(ct)
 lat = None
 if len(npos) > 0:
@@ -182,10 +275,13 @@ if len(npos) > 0:
     else:
         lat = conn.r.permut(len(npos), ptype='full')
     nlevels.append(len(lat))
+of = f
+if of is None:
+    of = e
 if not p:
-    designid = f
+    designid = of
 else:
-    designid = f+'.full'
+    designid = of+'.full'
 finfow = open(designid+'.info', 'w')
 if not p:
     dinfo =  "SBC-DoE; Factors: %d; Levels: %d; Positional: %d [Latin square]" % (len(factors), np.prod(nlevels), len(npos))
@@ -197,7 +293,10 @@ if vars(arg)['r']:
     doe1 = conn.r.doe1(factors=np.array(factors), nlevels=np.array(nlevels), timeout=30)
     for des in range(0, len(doe1)):
         fname = designid+'.d'+str(des)
-        libr, libscr = save_design(doe1[des], ct, fname, lat)
+        libr, libscr = save_design(doe1[des], ct, fname, lat, rid)
+        if rid is not None:
+            fname = designid+'.di'+str(des)
+            libr, libscr = save_design(doe1[des], ct, fname, lat, rid=None)
         if vars(arg)['i']:
             dinfor =  " Design %d; Model S^%d; Library size: %d" % (des, des+1, len(libr))
         else:
@@ -205,10 +304,18 @@ if vars(arg)['r']:
         print(dinfor)
         finfow.write(dinfor+'\n')
 if vars(arg)['o']:
-    doe2 = conn.r.doe2(factors=np.array(factors), nlevels=np.array(nlevels), timeout=30)
+    if vars(arg)['x']:
+        seed = np.random.randint(1e6)
+    else:
+        seed = 100
+    doe2 = conn.r.doe2(factors=np.array(factors), nlevels=np.array(nlevels),
+                       timeout=30, seed=seed)
     for des in range(0, len(doe2)):
         fname = designid+'.oad'+str(des)
-        libr, libscr = save_design(doe2[des], ct, fname, lat)
+        libr, libscr = save_design(doe2[des], ct, fname, lat, rid)
+        if rid is not None:
+            fname = designid+'.oadi'+str(des)
+            libr, libscr = save_design(doe2[des], ct, fname, lat, rid=None)
         if vars(arg)['i']:
             dinfor = " Orthogonal Array Design; Library size: %d" % (len(librs),)
         else:

@@ -16,10 +16,14 @@ latin <- function(n, nrand = 20) {
 }
 
 # Generate full permutation or latin square
-permut <- function(n, ptype='latin') {
+permut <- function(n, ptype='latin', randomize=FALSE) {
     require('combinat')
     if (ptype == 'latin') {
-        return(latin(n))
+        if (randomize) {
+            return(latin(n))
+        } else {
+            return(latin(n, 0))
+        }
     } else {
         return(permn(n))
     }
@@ -72,10 +76,10 @@ doe1 <- function(factors, nlevels, timeout=5) {
 }
 
 # Orthogonal arrays
-doe2 <- function(factors, nlevels, timeout=5) {
+doe2 <- function(factors, nlevels, timeout=5, seed=888) {
     require('DoE.base')
     const.oa <- list()
-    des <- oa.design(factor.names=factors, nlevels=nlevels)
+    des <- oa.design(factor.names=factors, nlevels=nlevels, seed=seed)
     const.oa[[1]] <- list(design=des, resolution=NULL)
     return(const.oa)
 }

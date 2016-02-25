@@ -8,11 +8,13 @@ To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 @author:  Pablo Carbonell
 @description: SYNBIOCHEM design of experiments
 '''
-import numpy as np
-from os import path
-import pyRserve
-import sys
+from os import path, mkdir
+import shutil
+import sys, re
 import argparse
+from datetime import datetime
+import pyRserve
+import numpy as np
 
 def construct(f):
     ct = []
@@ -74,10 +76,10 @@ def convert_construct(xct):
         
     return ct, rid
 
-def read_excel(e):
+def read_excel(e, s=1):
     import openpyxl
     wb = openpyxl.load_workbook(e)
-    xl = wb.get_sheet_by_name(wb.get_sheet_names()[0])
+    xl = wb.get_sheet_by_name(wb.get_sheet_names()[s-1])
     nl = xl.get_highest_row()
     fact = {}
     for r in range(1, nl):
@@ -235,34 +237,43 @@ def save_design(design, ct, fname, lat, rid = None):
 parser = argparse.ArgumentParser(description='SBC-DeO. Pablo Carbonell, SYNBIOCHEM, 2016')
 parser.add_argument('-p', action='store_true',
                     help='Full positional permutation (default: random latin square)')
-parser.add_argument('-f', 
-                    help='Input file with specifications (old format)')
-parser.add_argument('-e', 
-                    help='Input file with specifications (excel format)')
+parser.add_argument('f', 
+                    help='Input file with specifications (excel or txt format)')
+parser.add_argument('-s', default=1,
+                    help='Excel sheet number (default 1)')
 parser.add_argument('-i', action='store_true',
                     help='Ignore segment calculations based on promoters')
 parser.add_argument('-r', action='store_false',
                     help='No regular fractional factorial design')
 parser.add_argument('-o', action='store_false',
                     help='No orthogonal array design')
-parser.add_argument('-x', action='store_true',
-                    help='Randomize orthogonal array design')
+parser.add_argument('-x', nargs='?', type=int, default=100,
+                    help='Random seed (default 100) [or pick random number] for oa design')
+parser.add_argument('id', 
+                    help='Design id')
+parser.add_argument('-O',  
+                    help='Output path')
 arg = parser.parse_args()
-if 'f' not in vars(arg) and 'e' not in vars(arg):
-    parser.print_help()
-    sys.exit()
 f = vars(arg)['f']
-e = vars(arg)['e']
-if f is not None:
-    ct = construct(f)
-    rid = None
-else:
-    if e is None or not path.exists(e):
-        parser.print_help()
-        sys.exit()
-    xct = read_excel(e)
-    ct, rid = convert_construct(xct)
 p = vars(arg)['p']
+desid = vars(arg)['id']
+outpath = vars(arg)['O']
+if outpath is None or not path.exists(outpath):
+    outpath = path.dirname(f)
+outfolder = path.join(outpath, desid)
+if not path.exists(outfolder):
+    mkdir(outfolder)
+inputfile = path.join(outfolder, path.basename(f))
+shutil.copy(f, inputfile)
+sys.argv[1] = '"'+path.basename(inputfile)+'"'
+cmd = ' '.join(sys.argv)
+s = int(vars(arg)['s'])
+try:
+    xct = read_excel(inputfile, s)
+    ct, rid = convert_construct(xct)
+except:
+    # old txt format (needs update)
+    ct, cid = construct(inputfile)
 wd = path.dirname(path.realpath(__file__))
 conn = pyRserve.connect()
 conn.r.source(path.join(wd, 'mydeo.r'))
@@ -275,19 +286,19 @@ if len(npos) > 0:
     else:
         lat = conn.r.permut(len(npos), ptype='full')
     nlevels.append(len(lat))
-of = f
-if of is None:
-    of = e
 if not p:
-    designid = of
+    designid = path.join(outfolder, desid)
 else:
-    designid = of+'.full'
+    designid = path.join(outfolder, desid+'.full')
 finfow = open(designid+'.info', 'w')
+now = datetime.now().strftime("%Y-%M-%d %H:%M:%S")
+finfow.write('SBC-DoE; '+now+'\n')
+finfow.write(' Command: '+cmd+'\n')
 if not p:
-    dinfo =  "SBC-DoE; Factors: %d; Levels: %d; Positional: %d [Latin square]" % (len(factors), np.prod(nlevels), len(npos))
+    dinfo =  " Factors: %d; Levels: %d; Positional: %d [Latin square]" % (len(factors), np.prod(nlevels), len(npos))
 else:
-    dinfo = "SBC-DoE; Factors: %d; Levels: %d; Positional: %d [Full permutations]" % (len(factors), np.prod(nlevels), len(npos))
-print(dinfo)
+    dinfo = " Factors: %d; Levels: %d; Positional: %d [Full permutations]" % (len(factors), np.prod(nlevels), len(npos))
+print('SBC-DoE; '+dinfo)
 finfow.write(dinfo+'\n')
 if vars(arg)['r']:
     doe1 = conn.r.doe1(factors=np.array(factors), nlevels=np.array(nlevels), timeout=30)
@@ -304,10 +315,11 @@ if vars(arg)['r']:
         print(dinfor)
         finfow.write(dinfor+'\n')
 if vars(arg)['o']:
-    if vars(arg)['x']:
+    xarg = vars(arg)['x']
+    if xarg is None:
         seed = np.random.randint(1e6)
     else:
-        seed = 100
+        seed = xarg
     doe2 = conn.r.doe2(factors=np.array(factors), nlevels=np.array(nlevels),
                        timeout=30, seed=seed)
     for des in range(0, len(doe2)):
@@ -317,40 +329,11 @@ if vars(arg)['o']:
             fname = designid+'.oadi'+str(des)
             libr, libscr = save_design(doe2[des], ct, fname, lat, rid=None)
         if vars(arg)['i']:
-            dinfor = " Orthogonal Array Design; Library size: %d" % (len(librs),)
+            dinfor = " Orthogonal Array Design; Library size: %d; Seed: %d" % (len(librs),seed)
         else:
-            dinfor = " Orthogonal Array Design; Library size: %d; Segments: %d; Screening size: %d" % (len(libr), len(segments(libr, ct)), np.sum(libscr))
+            dinfor = " Orthogonal Array Design; Library size: %d; Segments: %d; Screening size: %d; Seed: %d" % (len(libr), len(segments(libr, ct)), np.sum(libscr), seed)
         print(dinfor)
         finfow.write(dinfor+'\n')
 finfow.close()
 
 
-# col = set()
-# prom = set()
-# for l in libr:
-#     x = ''
-#     pr = []
-#     for ll in l:
-#         m = ll.split('_')
-#         if ll.startswith('p'):
-#             if m[1] == '1':
-#                 if x != '':
-#                     pr.append(x)
-#                     col.add(x)
-#                 x = ''
-#         elif ll.startswith('g'):
-#             x += ll
-#     col.add(x)
-#     pr.append(x)
-#     prom.add('.'.join(sorted(pr)))
-
-# if x != '':
-#     col.add(x)
-
-# sta= {}
-# for i in col:
-#     m = i.split('_')
-#     l = len(m) - 1
-#     if l not in sta:
-#         sta[l] = 0
-#     sta[l] += 1

@@ -9,12 +9,13 @@ To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 @description: SYNBIOCHEM design of experiments
 '''
 from os import path, mkdir
-import shutil
+import shutil, glob
 import sys, re
 import argparse
 from datetime import datetime
 import pyRserve
 import numpy as np
+import sbolutil as sbol
 
 def construct(f):
     ct = []
@@ -37,9 +38,6 @@ def construct(f):
             deg = int(m[4])
         except:
             deg = 0
-#        ll = np.log2(nlevels)
-#        if ll != int(ll):
-#            raise 
         ct.append((factor, nlevels, positional, pool, deg))
     return ct
 
@@ -170,6 +168,26 @@ def segments(libr, ct):
 #    return prom
 
 
+def save_sbol(desid, libr, outfolder):
+    if not path.exists(outfolder):
+        mkdir(outfolder)
+    nid = []
+    x = sbol.sbol()
+    for i in range(0, len(libr)):
+        did = desid+'_'+str(i)
+        nid.append(did)
+        if i == 0:
+            x.construct2(did, libr[i], defcomp=True)
+        else:
+            x.construct2(did, libr[i], defcomp=False)
+#        out = path.join(outfolder, did+'.sbol')
+#        x.serialize(out)
+    out = path.join(outfolder, desid+'.sbol')
+    x.serialize(out)
+    x = sbol.sbol()
+    x.collection(desid, nid)
+    out = path.join(outfolder, desid+'_c'+'.sbol')
+    x.serialize(out)
     
 
 def save_design(design, ct, fname, lat, rid = None):
@@ -191,6 +209,7 @@ def save_design(design, ct, fname, lat, rid = None):
             for i in range(0, len(ndes[fact])):
                 if ndes[fact][i] > dege:
                     ndes[fact][i] = 1
+    
     for x in ct:
         fact = x[0]
         if len(ndes[fact]) == 0:
@@ -223,8 +242,13 @@ def save_design(design, ct, fname, lat, rid = None):
                 faid = "%s_%d" % (fa, ndes[fa][x],)
             if rid is not None:
                 faid = rid[faid]
+            if faid is None:
+                faid = ''
             if faid is not None:
-                of.write("%s\t" % (faid,))
+                if rid is None:
+                    of.write("%s\t" % (faid,))
+                else:
+                    of.write("%16s" % (faid,))
                 ll.append("%s" %  (faid,))
         of.write('\n')
         libr.append(ll)
@@ -233,6 +257,64 @@ def save_design(design, ct, fname, lat, rid = None):
         libscr.append(screen)
     of.close()
     return libr, libscr
+
+def pcad(f):
+    i = 0
+    gl = []
+    gl1 = []
+    # Count how many levels each factor has
+    count = {}
+    for l in open(f):
+        m = l.rstrip().split('\t')
+        for x in m:
+            v = x.split('_')
+            if v[0] not in gl:
+                gl.append(v[0])
+            if v[0] not in count:
+                count[v[0]] = set()
+            count[v[0]].add(x)
+            if x not in gl1:
+                gl1.append(x)
+    fl = []
+    for l in open(f):
+        m = l.rstrip().split('\t')
+        fn = f+'.pcad'+str(i)
+        fl.append(fn)
+        ow = open(fn, 'w')
+        m = l.split()
+        for x in m:
+            v = x.split('_')
+            if x.startswith('promoter'):
+                # p1: assumes promoter absence
+                if v[0].startswith('plasmid') or  v[1] != '1':
+                    if not v[0].startswith('plasmid'):
+                        ow.write('t\n')
+    #                ow.write('p %s %d\n' % (v[0],gl.index(v[0])+1))
+    # For promoters, we just give promoter number and color it accordingly
+                    ow.write('p p%s %d\n' % (v[1],int(v[1])*2+2))
+                else:
+                    continue
+            else:
+    #            ow.write('c %s %d\n' % (v[0],gl.index(v[0])+1))
+                if len(count[v[0]]) > 1:
+                       ow.write('c %s %d\n' % (x,gl1.index(x)+1))
+                else:
+                       ow.write('c %s %d\n' % (v[0],gl1.index(x)+1))                
+        ow.write('t\n')
+        ow.write('# Arcs\n')
+        ow.close()
+        i += 1
+
+    ofl = []
+    for pcad in fl:
+        of = pcad+'.png'
+        ofl.append(of)
+        cmd = 'perl piget.pl '+pcad+' '+of
+        system(cmd)
+
+    cmd = 'convert '+' '.join(ofl)+' -append '+f+'.png'
+    system(cmd)
+
 
 parser = argparse.ArgumentParser(description='SBC-DeO. Pablo Carbonell, SYNBIOCHEM, 2016')
 parser.add_argument('-p', action='store_true',
@@ -264,7 +346,7 @@ outfolder = path.join(outpath, desid)
 if not path.exists(outfolder):
     mkdir(outfolder)
 inputfile = path.join(outfolder, path.basename(f))
-shutil.copy(f, inputfile)
+shutil.copyfile(f, inputfile)
 sys.argv[1] = '"'+path.basename(inputfile)+'"'
 cmd = ' '.join(sys.argv)
 s = int(vars(arg)['s'])
@@ -319,12 +401,13 @@ if vars(arg)['o']:
     if xarg is None:
         seed = np.random.randint(1e6)
     else:
-        seed = xarg
+        seed = xarg       
     doe2 = conn.r.doe2(factors=np.array(factors), nlevels=np.array(nlevels),
                        timeout=30, seed=seed)
     for des in range(0, len(doe2)):
         fname = designid+'.oad'+str(des)
         libr, libscr = save_design(doe2[des], ct, fname, lat, rid)
+        save_sbol(desid, libr, path.join(outfolder, 'sbol'))
         if rid is not None:
             fname = designid+'.oadi'+str(des)
             libr, libscr = save_design(doe2[des], ct, fname, lat, rid=None)

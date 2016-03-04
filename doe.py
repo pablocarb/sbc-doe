@@ -8,7 +8,7 @@ To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 @author:  Pablo Carbonell
 @description: SYNBIOCHEM design of experiments
 '''
-from os import path, mkdir
+from os import path, mkdir, system, unlink
 import shutil, glob
 import sys, re
 import argparse
@@ -16,6 +16,9 @@ from datetime import datetime
 import pyRserve
 import numpy as np
 import sbolutil as sbol
+import sbcid
+import iceutils
+    
 
 def construct(f):
     ct = []
@@ -74,26 +77,71 @@ def convert_construct(xct):
         
     return ct, rid
 
+def get_sequence(partnumber):
+    partid = int(re.sub('SBC', '', partnumber))
+    ice = iceutils.ICESession('ice')
+    return ice.get_sequence(partid)['sequence']
+
+def get_part(partnumber):
+    partid = int(re.sub('SBC', '', partnumber))
+    ice = iceutils.ICESession('ice')
+    return ice.get_part(partid)
+
+
+
+
+# transitional function to map old ids to new ICE ids
+def map_oldid():
+    import openpyxl
+    midfile = '/mnt/SBC1/code/sbc-doe/mapping.xlsx'
+    wb = openpyxl.load_workbook(midfile)
+    xl = wb.get_sheet_by_name(wb.get_sheet_names()[0])
+    nl = xl.get_highest_row()
+    mid = {}
+    for r in range(1, nl):
+        newid = xl.cell(row=r, column= 0).value
+        oldid = xl.cell(row=r, column= 1).value
+        mid[oldid] = newid
+    return mid
+
+
+def write_fasta(fname, seqid, sequence):
+    ow = open(fname, 'w')
+    ow.write('>'+seqid+'\n')
+    ow.write(sequence)
+    ow.close()
+
 def read_excel(e, s=1):
     import openpyxl
     wb = openpyxl.load_workbook(e)
     xl = wb.get_sheet_by_name(wb.get_sheet_names()[s-1])
     nl = xl.get_highest_row()
+    mid = None
+    seql = {}
     fact = {}
+    partinfo = {}
     for r in range(1, nl):
         factor = int(xl.cell(row=r, column= 0).value)
         positional = xl.cell(row=r, column= 1).value
         component = xl.cell(row=r, column= 2).value
         part = xl.cell(row=r, column= 3).value
+        sequence = None
+        if part is not None and part.startswith('SBCPA'):
+            if mid is None:
+                mid = map_oldid()
+            part = mid[part]
+            seql[part] = get_sequence(part)
+            partinfo[part] = get_part(part)
         if factor not in fact:
             fact[factor] = {'positional': positional,
                             'component': component,
-                            'levels': []}
+                            'levels': [],
+                            'sequence': seql[part]
+            }
         if part == 'blank':
             part = None
         fact[factor]['levels'].append(part)
-        
-    return fact
+    return fact, seql, partinfo
 
 
 def getfactors(ct, permut=False):
@@ -168,29 +216,39 @@ def segments(libr, ct):
 #    return prom
 
 
-def save_sbol(desid, libr, outfolder):
+def save_sbol(desid, libr, constructid, outfolder):
     if not path.exists(outfolder):
         mkdir(outfolder)
     nid = []
     x = sbol.sbol()
     for i in range(0, len(libr)):
-        did = desid+'_'+str(i)
-        nid.append(did)
-        if i == 0:
-            x.construct2(did, libr[i], defcomp=True)
-        else:
-            x.construct2(did, libr[i], defcomp=False)
+        did = constructid[i]
+        x.construct3(did, libr[i])
 #        out = path.join(outfolder, did+'.sbol')
 #        x.serialize(out)
     out = path.join(outfolder, desid+'.sbol')
     x.serialize(out)
-    x = sbol.sbol()
-    x.collection(desid, nid)
-    out = path.join(outfolder, desid+'_c'+'.sbol')
-    x.serialize(out)
-    
+#    x = sbol.sbol()
+#    x.collection(desid, constructid)
+#    out = path.join(outfolder, desid+'_c'+'.sbol')
+#    x.serialize(out)
 
-def save_design(design, ct, fname, lat, rid = None):
+# sbc id generator
+def getsbcid(name, description, RegisterinICE= False, designid=None):
+    if RegisterinICE:
+        responsible = 'Pablo Carbonell'
+        email = 'pablo.carbonell@manchester.ac.uk'
+        ice = iceutils.ICESession('icetest')
+        plasmid = ice.template_newplasmid(name , description, responsible, responsible, responsible, email, email, email)
+        reg_plasmid = ice.create_part(plasmid)
+        sbcid = reg_plasmid['id']
+        partid = ice.get_part(sbcid)['partId']
+    else:
+        response = sbcid.reserve('DE', 1, 'pablo.carbonell@manchester.ac.uk', 'Construct in combinatorial library '+designid)
+        partid = "SBCDE%06d" % (response['result'][0]['id'],)
+    return partid
+
+def save_design(design, ct, fname, lat, rid = None, designid = None, constructid = [], partinfo = [], project=None):
     ndes = {}
     n = 0
     # Read the design for each factor
@@ -245,11 +303,41 @@ def save_design(design, ct, fname, lat, rid = None):
             if faid is None:
                 faid = ''
             if faid is not None:
-                if rid is None:
-                    of.write("%s\t" % (faid,))
-                else:
-                    of.write("%16s" % (faid,))
                 ll.append("%s" %  (faid,))
+
+        # Get the id
+        if len(constructid) < x+1 :
+            # Generate a meaningful name
+            name = ''
+            for part in ll:
+                if part != '':
+                    if part in partinfo:
+                        if name != '':
+                            name += '-'
+                        if partinfo[part]['shortDescription'] == 'Promoter':
+                            name += '('
+                        name += partinfo[part]['name']
+                        if partinfo[part]['shortDescription'] == 'Promoter':
+                            name += ')'
+
+            if name == '':
+                name = designid +'_'+str(x+1)
+            
+            description = 'Plasmid '
+            if project is not None:
+                description += project+'; '
+            description += 'Design: '+ designid+'; '
+            description += 'Construct: '+' '.join(ll)
+            constructid.append(getsbcid(name, description, RegisterinICE=True, designid=designid))
+        # Save the construct
+        if rid is None:
+            of.write("%s\t" % (constructid[x],))
+            for part in ll:
+                of.write("%s\t" % (part,))
+        else:
+            of.write("%16s" % (constructid[x],))
+            for part in ll:
+                of.write("%16s" % (part,))
         of.write('\n')
         libr.append(ll)
         if screen > 1:
@@ -258,7 +346,16 @@ def save_design(design, ct, fname, lat, rid = None):
     of.close()
     return libr, libscr
 
-def pcad(f):
+def save_seqs(outpath, constructid, libr, seql):
+    for c in range(0, len(constructid)):
+        seq = ''
+        for s in libr[c]:
+            if s != '':
+                seq += seql[s]
+        write_fasta(path.join(outpath, constructid[c]+'.fasta'), constructid[c], seq)
+
+# If firstcolumn, the first column is the contruct name
+def pcad(f, rid=None, firstcolumn=True, label=True):
     i = 0
     gl = []
     gl1 = []
@@ -266,6 +363,8 @@ def pcad(f):
     count = {}
     for l in open(f):
         m = l.rstrip().split('\t')
+        if firstcolumn:
+            m = m[1:]
         for x in m:
             v = x.split('_')
             if v[0] not in gl:
@@ -276,27 +375,42 @@ def pcad(f):
             if x not in gl1:
                 gl1.append(x)
     fl = []
+    labels = []
     for l in open(f):
         m = l.rstrip().split('\t')
+        if firstcolumn:
+            labels.append(m[0])
+            m = m[1:]
         fn = f+'.pcad'+str(i)
         fl.append(fn)
         ow = open(fn, 'w')
         m = l.split()
+        if firstcolumn:
+            m = m[1:]
         for x in m:
             v = x.split('_')
             if x.startswith('promoter'):
                 # p1: assumes promoter absence
-                if v[0].startswith('plasmid') or  v[1] != '1':
-                    if not v[0].startswith('plasmid'):
-                        ow.write('t\n')
+                if v[1] != '1':
+                    ow.write('t\n')
+                    # For promoters, we just give promoter number and color it accordingly
+                    if rid is not None and x in rid:
+                        ow.write('p %s %d\n' % (rid[x],int(v[1])*2+2))
+                    else:
+                        ow.write('p p%s %d\n' % (v[1],int(v[1])*2+2))
+
+            elif x.startswith('plasmid'):
     #                ow.write('p %s %d\n' % (v[0],gl.index(v[0])+1))
     # For promoters, we just give promoter number and color it accordingly
-                    ow.write('p p%s %d\n' % (v[1],int(v[1])*2+2))
+                if rid is not None and x in rid:
+                    ow.write('p %s %d\n' % (rid[x],int(v[1])*2+2))
                 else:
-                    continue
+                    ow.write('p p%s %d\n' % (v[1],int(v[1])*2+2))
             else:
     #            ow.write('c %s %d\n' % (v[0],gl.index(v[0])+1))
-                if len(count[v[0]]) > 1:
+                if rid is not None and x in rid:
+                       ow.write('c %s %d\n' % (rid[x],gl1.index(x)+1))
+                elif len(count[v[0]]) > 1:
                        ow.write('c %s %d\n' % (x,gl1.index(x)+1))
                 else:
                        ow.write('c %s %d\n' % (v[0],gl1.index(x)+1))                
@@ -306,7 +420,10 @@ def pcad(f):
         i += 1
 
     ofl = []
-    for pcad in fl:
+    for i in range(0,len(fl)):
+        pcad = fl[i]
+        if label:
+            ofl.append("label:'"+labels[i]+"'")
         of = pcad+'.png'
         ofl.append(of)
         cmd = 'perl piget.pl '+pcad+' '+of
@@ -314,6 +431,9 @@ def pcad(f):
 
     cmd = 'convert '+' '.join(ofl)+' -append '+f+'.png'
     system(cmd)
+    for x in fl+ofl:
+        if path.exists(x):
+            unlink(x)
 
 
 parser = argparse.ArgumentParser(description='SBC-DeO. Pablo Carbonell, SYNBIOCHEM, 2016')
@@ -335,11 +455,23 @@ parser.add_argument('id',
                     help='Design id')
 parser.add_argument('-O',  
                     help='Output path')
+parser.add_argument('-b', action='store_false',  
+                    help='Do not generate sbol file')
+parser.add_argument('-g', action='store_true',  
+                    help='Generate pigeon cad image')
+parser.add_argument('-c', action='store_true',  
+                    help='Generate construct fasta files')
+parser.add_argument('-v', 
+                    help='Project description')
 arg = parser.parse_args()
 f = vars(arg)['f']
 p = vars(arg)['p']
+cfasta = vars(arg)['c']
 desid = vars(arg)['id']
 outpath = vars(arg)['O']
+sbolgen = vars(arg)['b']
+cad = vars(arg)['g']
+project = vars(arg)['v']
 if outpath is None or not path.exists(outpath):
     outpath = path.dirname(f)
 outfolder = path.join(outpath, desid)
@@ -351,11 +483,14 @@ sys.argv[1] = '"'+path.basename(inputfile)+'"'
 cmd = ' '.join(sys.argv)
 s = int(vars(arg)['s'])
 try:
-    xct = read_excel(inputfile, s)
+    xct, seql, partinfo = read_excel(inputfile, s)
     ct, rid = convert_construct(xct)
 except:
     # old txt format (needs update)
     ct, cid = construct(inputfile)
+    seql = {}
+for s in seql:
+    write_fasta(path.join(outpath, outfolder, s+'.fasta'), s, seql[s])
 wd = path.dirname(path.realpath(__file__))
 conn = pyRserve.connect()
 conn.r.source(path.join(wd, 'mydeo.r'))
@@ -372,8 +507,9 @@ if not p:
     designid = path.join(outfolder, desid)
 else:
     designid = path.join(outfolder, desid+'.full')
+constructid = []
 finfow = open(designid+'.info', 'w')
-now = datetime.now().strftime("%Y-%M-%d %H:%M:%S")
+now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 finfow.write('SBC-DoE; '+now+'\n')
 finfow.write(' Command: '+cmd+'\n')
 if not p:
@@ -386,16 +522,18 @@ if vars(arg)['r']:
     doe1 = conn.r.doe1(factors=np.array(factors), nlevels=np.array(nlevels), timeout=30)
     for des in range(0, len(doe1)):
         fname = designid+'.d'+str(des)
-        libr, libscr = save_design(doe1[des], ct, fname, lat, rid)
+        libr, libscr = save_design(doe1[des], ct, fname, lat, rid, desid, constructid, partinfo, project)
         if rid is not None:
             fname = designid+'.di'+str(des)
-            libr, libscr = save_design(doe1[des], ct, fname, lat, rid=None)
+            libr, libscr = save_design(doe1[des], ct, fname, lat, rid=None, designid=desid, constructid=constructid)
         if vars(arg)['i']:
             dinfor =  " Design %d; Model S^%d; Library size: %d" % (des, des+1, len(libr))
         else:
             dinfor = " Design %d; Model S^%d; Library size: %d; Segments: %d; Screening size: %d" % (des, des+1, len(libr), len(segments(libr, ct)), np.sum(libscr))
         print(dinfor)
         finfow.write(dinfor+'\n')
+        if cad:
+            pcad(fname, rid)
 if vars(arg)['o']:
     xarg = vars(arg)['x']
     if xarg is None:
@@ -406,17 +544,22 @@ if vars(arg)['o']:
                        timeout=30, seed=seed)
     for des in range(0, len(doe2)):
         fname = designid+'.oad'+str(des)
-        libr, libscr = save_design(doe2[des], ct, fname, lat, rid)
-        save_sbol(desid, libr, path.join(outfolder, 'sbol'))
+        libr, libscr = save_design(doe2[des], ct, fname, lat, rid, desid, constructid, partinfo, project)
+        if cfasta:
+            save_seqs(outfolder, constructid, libr, seql)
+        if sbolgen:
+            save_sbol(desid, libr, constructid, path.join(outfolder))
         if rid is not None:
             fname = designid+'.oadi'+str(des)
-            libr, libscr = save_design(doe2[des], ct, fname, lat, rid=None)
+            libr, libscr = save_design(doe2[des], ct, fname, lat, rid=None, designid=desid, constructid=constructid)
         if vars(arg)['i']:
             dinfor = " Orthogonal Array Design; Library size: %d; Seed: %d" % (len(librs),seed)
         else:
             dinfor = " Orthogonal Array Design; Library size: %d; Segments: %d; Screening size: %d; Seed: %d" % (len(libr), len(segments(libr, ct)), np.sum(libscr), seed)
         print(dinfor)
         finfow.write(dinfor+'\n')
+        if cad:
+            pcad(fname, rid)
 finfow.close()
 
 

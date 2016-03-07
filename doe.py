@@ -1,7 +1,7 @@
 '''
-Unique (c) University of Manchester 2015
+Doe (c) University of Manchester 2015
 
-Unique is licensed under the MIT License.
+Doe is licensed under the MIT License.
 
 To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 
@@ -15,6 +15,7 @@ import argparse
 from datetime import datetime
 import pyRserve
 import numpy as np
+import doeopt
 import sbolutil as sbol
 import sbcid
 import iceutils
@@ -79,15 +80,13 @@ def convert_construct(xct):
 
 def get_sequence(partnumber):
     partid = int(re.sub('SBC', '', partnumber))
-    ice = iceutils.ICESession('ice')
+    ice = iceutils.ICESession(doeopt.ICE_RETRIEVE)
     return ice.get_sequence(partid)['sequence']
 
 def get_part(partnumber):
     partid = int(re.sub('SBC', '', partnumber))
-    ice = iceutils.ICESession('ice')
+    ice = iceutils.ICESession(doeopt.ICE_RETRIEVE)
     return ice.get_part(partid)
-
-
 
 
 # transitional function to map old ids to new ICE ids
@@ -236,15 +235,15 @@ def save_sbol(desid, libr, constructid, outfolder):
 # sbc id generator
 def getsbcid(name, description, RegisterinICE= False, designid=None):
     if RegisterinICE:
-        responsible = 'Pablo Carbonell'
-        email = 'pablo.carbonell@manchester.ac.uk'
-        ice = iceutils.ICESession('icetest')
+        responsible = doeopt.ICE_USER
+        email = doeopt.ICE_EMAIL
+        ice = iceutils.ICESession(doeopt.ICE_POST, info=doeopt.ICE_INFO) # icetest
         plasmid = ice.template_newplasmid(name , description, responsible, responsible, responsible, email, email, email)
         reg_plasmid = ice.create_part(plasmid)
         sbcid = reg_plasmid['id']
         partid = ice.get_part(sbcid)['partId']
     else:
-        response = sbcid.reserve('DE', 1, 'pablo.carbonell@manchester.ac.uk', 'Construct in combinatorial library '+designid)
+        response = sbcid.reserve('DE', 1, doeopt.ICE_EMAIL, 'Construct in combinatorial library '+designid)
         partid = "SBCDE%06d" % (response['result'][0]['id'],)
     return partid
 

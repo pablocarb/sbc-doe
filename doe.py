@@ -241,6 +241,8 @@ def getsbcid(name, description, RegisterinICE= False, designid=None):
         plasmid = ice.template_newplasmid(name , description, responsible, responsible, responsible, email, email, email)
         reg_plasmid = ice.create_part(plasmid)
         sbcid = reg_plasmid['id']
+        group_number = 2
+        ice.add_write_permission(sbcid, group_number)
         partid = ice.get_part(sbcid)['partId']
     else:
         response = sbcid.reserve('DE', 1, doeopt.ICE_EMAIL, 'Construct in combinatorial library '+designid)

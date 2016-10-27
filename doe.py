@@ -21,6 +21,7 @@ sys.path.append('/mnt/SBC1/code/sbc-api')
 import sbolutil as sbol
 import sbcid
 import iceutils
+import csv
 
 def construct(f):
     ct = []
@@ -121,11 +122,20 @@ def read_excel(e, s=1):
     fact = {}
     partinfo = {}
     for r in range(1, nl):
-        factor = int(xl.cell(row=r, column= 0).value)
-        positional = xl.cell(row=r, column= 1).value
-        component = xl.cell(row=r, column= 2).value
-        part = xl.cell(row=r, column= 3).value
-        sequence = None
+        try:
+            factor = int(xl.cell(row=r, column= 0).value)
+            positional = xl.cell(row=r, column= 1).value
+            component = xl.cell(row=r, column= 2).value
+            part = xl.cell(row=r, column= 3).value
+        except:
+            continue
+        if part is None:
+            if factor in fact:
+                i = len(fact[factor]['levels'])+1
+            else:
+                i = 1
+            part = 'P'+str(factor)+'_'+str(i)
+        seql[part] = None
         if part is not None and part.startswith('SBCPA'):
             if mid is None:
                 mid = map_oldid()
@@ -241,22 +251,30 @@ def getsbcid(name, description, RegisterinICE= False, designid=None):
         ice = iceutils.ICESession(doeopt.ICE_POST, info=doeopt.ICE_INFO) # icetest
         plasmid = ice.template_newplasmid(name , description, responsible, responsible, responsible, email, email, email)
         reg_plasmid = ice.create_part(plasmid)
-        sbcid = reg_plasmid['id']
+        sbcID = reg_plasmid['id']
         group_number = 2
-        ice.add_write_permission(sbcid, group_number)
-        partid = ice.get_part(sbcid)['partId']
+        ice.add_write_permission(sbcID, group_number)
+        partid = ice.get_part(sbcID)['partId']
     else:
         response = sbcid.reserve('DE', 1, doeopt.ICE_EMAIL, 'Construct in combinatorial library '+designid)
         partid = "SBCDE%06d" % (response['result'][0]['id'],)
     return partid
 
-def save_design(design, ct, fname, lat, rid = None, designid = None, constructid = [], partinfo = [], project=None):
+
+
+def save_design(design, ct, fname, lat, rid = None, designid = None, constructid = [], partinfo = [], project=None, RegisterinIce=False):
     ndes = {}
     n = 0
     # Read the design for each factor
     for x in ct:
         fact = x[0]
-        if fact in design['design'].keys:
+        found = False
+        if type(design['design'] == dict):
+            flist = design['design'].keys()
+        else:
+            flist = design['design'].keys
+                
+        if fact in flist:
             ndes[fact] = np.array(design['design'][fact])
             n = len(ndes[fact])
         else:
@@ -275,7 +293,7 @@ def save_design(design, ct, fname, lat, rid = None, designid = None, constructid
         if len(ndes[fact]) == 0:
             ndes[fact] = np.repeat(1, n)
     # Add positional factor
-    if 'pos' in design['design'].keys:
+    if 'pos' in flist:
         ndes['pos'] = np.array(design['design']['pos'])
     # Store designs
     of = open(fname, 'w')
@@ -330,7 +348,7 @@ def save_design(design, ct, fname, lat, rid = None, designid = None, constructid
                 description += project+'; '
             description += 'Design: '+ designid+'; '
             description += 'Construct: '+' '.join(ll)
-            constructid.append(getsbcid(name, description, RegisterinICE=True, designid=designid))
+            constructid.append(getsbcid(name, description, RegisterinICE=RegisterinIce, designid=designid))
         # Save the construct
         if rid is None:
             of.write("%s\t" % (constructid[x],))
@@ -437,131 +455,172 @@ def pcad(f, rid=None, firstcolumn=True, label=True):
         if path.exists(x):
             unlink(x)
 
+def readJMP(jmp):
+    header = None
+    design = []
+    doejmp = {'design': {}}
+    for row in csv.reader(open(jmp)):
+        if header is None:
+            header = row
+            continue
+        for i in range(0, len(header)):
+            fact = header[i]
+            if fact not in doejmp['design']:
+                doejmp['design'][fact] = []
+            doejmp['design'][fact].append(int(row[i]))
+    design.append(doejmp)
+    return design
 
-parser = argparse.ArgumentParser(description='SBC-DeO. Pablo Carbonell, SYNBIOCHEM, 2016')
-parser.add_argument('-p', action='store_true',
-                    help='Full positional permutation (default: random latin square)')
-parser.add_argument('f', 
-                    help='Input file with specifications (excel or txt format)')
-parser.add_argument('-s', default=1,
-                    help='Excel sheet number (default 1)')
-parser.add_argument('-i', action='store_true',
-                    help='Ignore segment calculations based on promoters')
-parser.add_argument('-r', action='store_false',
-                    help='No regular fractional factorial design')
-parser.add_argument('-o', action='store_false',
-                    help='No orthogonal array design')
-parser.add_argument('-x', nargs='?', type=int, default=100,
-                    help='Random seed (default 100) [or pick random number] for oa design')
-parser.add_argument('id', 
-                    help='Design id')
-parser.add_argument('-O',  
-                    help='Output path')
-parser.add_argument('-b', action='store_false',  
-                    help='Do not generate sbol file')
-parser.add_argument('-g', action='store_true',  
-                    help='Generate pigeon cad image')
-parser.add_argument('-c', action='store_true',  
-                    help='Generate construct fasta files')
-parser.add_argument('-v', 
-                    help='Project description')
-arg = parser.parse_args()
-f = vars(arg)['f']
-p = vars(arg)['p']
-cfasta = vars(arg)['c']
-desid = vars(arg)['id']
-outpath = vars(arg)['O']
-sbolgen = vars(arg)['b']
-cad = vars(arg)['g']
-project = vars(arg)['v']
-if outpath is None or not path.exists(outpath):
-    outpath = path.dirname(f)
-outfolder = path.join(outpath, desid)
-if not path.exists(outfolder):
-    mkdir(outfolder)
-inputfile = path.join(outfolder, path.basename(f))
-shutil.copyfile(f, inputfile)
-sys.argv[1] = '"'+path.basename(inputfile)+'"'
-cmd = ' '.join(sys.argv)
-s = int(vars(arg)['s'])
-try:
-    xct, seql, partinfo = read_excel(inputfile, s)
-    ct, rid = convert_construct(xct)
-except:
-    # old txt format (needs update)
-    ct, cid = construct(inputfile)
-    seql = {}
-for s in seql:
-    write_fasta(path.join(outpath, outfolder, s+'.fasta'), s, seql[s])
-wd = path.dirname(path.realpath(__file__))
-conn = pyRserve.connect()
-conn.r.source(path.join(wd, 'mydeo.r'))
-factors, nlevels, npos = getfactors(ct)
-lat = None
-if len(npos) > 0:
-    factors.append('pos')
+def arguments():
+    parser = argparse.ArgumentParser(description='SBC-DeO. Pablo Carbonell, SYNBIOCHEM, 2016')
+    parser.add_argument('-p', action='store_true',
+                        help='Full positional permutation (default: random latin square)')
+    parser.add_argument('f', 
+                        help='Input file with specifications (excel or txt format)')
+    parser.add_argument('-s', default=1,
+                        help='Excel sheet number (default 1)')
+    parser.add_argument('-i', action='store_true',
+                        help='Ignore segment calculations based on promoters')
+    parser.add_argument('-r', action='store_false',
+                        help='No regular fractional factorial design')
+    parser.add_argument('-o', action='store_false',
+                        help='No orthogonal array design')
+    parser.add_argument('-x', nargs='?', type=int, default=100,
+                        help='Random seed (default 100) [or pick random number] for oa design')
+    parser.add_argument('id', 
+                        help='Design id')
+    parser.add_argument('-O',  
+                        help='Output path')
+    parser.add_argument('-b', action='store_false',  
+                        help='Do not generate sbol file')
+    parser.add_argument('-g', action='store_true',  
+                        help='Generate pigeon cad image')
+    parser.add_argument('-c', action='store_true',  
+                        help='Generate construct fasta files')
+    parser.add_argument('-v', 
+                        help='Project description')
+    parser.add_argument('-I', action='store_true',
+                        help='Register project in ICE [False]')
+    parser.add_argument('-j', 
+                        help='DoE from JMP')
+    arg = parser.parse_args()
+    return arg
+
+if __name__ == '__main__':
+    arg = arguments()
+    f = vars(arg)['f']
+    p = vars(arg)['p']
+    cfasta = vars(arg)['c']
+    desid = vars(arg)['id']
+    outpath = vars(arg)['O']
+    sbolgen = vars(arg)['b']
+    cad = vars(arg)['g']
+    project = vars(arg)['v']
+    if outpath is None or not path.exists(outpath):
+        outpath = path.dirname(f)
+    outfolder = path.join(outpath, desid)
+    if not path.exists(outfolder):
+        mkdir(outfolder)
+    inputfile = path.join(outfolder, path.basename(f))
+    shutil.copyfile(f, inputfile)
+    sys.argv[1] = '"'+path.basename(inputfile)+'"'
+    cmd = ' '.join(sys.argv)
+    s = int(vars(arg)['s'])
+    try:
+        xct, seql, partinfo = read_excel(inputfile, s)
+        ct, rid = convert_construct(xct)
+    except:
+        # old txt format (needs update)
+        ct, cid = construct(inputfile)
+        seql = {}
+    if arg.c:
+        for s in seql:
+            write_fasta(path.join(outpath, outfolder, s+'.fasta'), s, seql[s])
+    wd = path.dirname(path.realpath(__file__))
+    conn = pyRserve.connect()
+    conn.r.source(path.join(wd, 'mydeo.r'))
+    factors, nlevels, npos = getfactors(ct)
+    lat = None
+    if len(npos) > 0:
+        factors.append('pos')
+        if not p:
+            lat = conn.r.permut(len(npos), ptype='latin')
+        else:
+            lat = conn.r.permut(len(npos), ptype='full')
+        lat = lat.astype(int)
+        nlevels.append(len(lat))
     if not p:
-        lat = conn.r.permut(len(npos), ptype='latin')
+        designid = path.join(outfolder, desid)
     else:
-        lat = conn.r.permut(len(npos), ptype='full')
-    nlevels.append(len(lat))
-if not p:
-    designid = path.join(outfolder, desid)
-else:
-    designid = path.join(outfolder, desid+'.full')
-constructid = []
-finfow = open(designid+'.info', 'w')
-now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-finfow.write('SBC-DoE; '+now+'\n')
-finfow.write(' Command: '+cmd+'\n')
-if not p:
-    dinfo =  " Factors: %d; Levels: %d; Positional: %d [Latin square]" % (len(factors), np.prod(nlevels), len(npos))
-else:
-    dinfo = " Factors: %d; Levels: %d; Positional: %d [Full permutations]" % (len(factors), np.prod(nlevels), len(npos))
-print('SBC-DoE; '+dinfo)
-finfow.write(dinfo+'\n')
-if vars(arg)['r']:
-    doe1 = conn.r.doe1(factors=np.array(factors), nlevels=np.array(nlevels), timeout=30)
-    for des in range(0, len(doe1)):
-        fname = designid+'.d'+str(des)
-        libr, libscr = save_design(doe1[des], ct, fname, lat, rid, desid, constructid, partinfo, project)
-        if rid is not None:
-            fname = designid+'.di'+str(des)
-            libr, libscr = save_design(doe1[des], ct, fname, lat, rid=None, designid=desid, constructid=constructid)
-        if vars(arg)['i']:
-            dinfor =  " Design %d; Model S^%d; Library size: %d" % (des, des+1, len(libr))
-        else:
-            dinfor = " Design %d; Model S^%d; Library size: %d; Segments: %d; Screening size: %d" % (des, des+1, len(libr), len(segments(libr, ct)), np.sum(libscr))
-        print(dinfor)
-        finfow.write(dinfor+'\n')
-        if cad:
-            pcad(fname, rid)
-if vars(arg)['o']:
-    xarg = vars(arg)['x']
-    if xarg is None:
-        seed = np.random.randint(1e6)
+        designid = path.join(outfolder, desid+'.full')
+    constructid = []
+    finfow = open(designid+'.info', 'w')
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    finfow.write('SBC-DoE; '+now+'\n')
+    finfow.write(' Command: '+cmd+'\n')
+    if not p:
+        dinfo =  " Factors: %d; Levels: %d; Positional: %d [Latin square]" % (len(factors), np.prod(nlevels), len(npos))
     else:
-        seed = xarg       
-    doe2 = conn.r.doe2(factors=np.array(factors), nlevels=np.array(nlevels),
-                       timeout=30, seed=seed)
-    for des in range(0, len(doe2)):
-        fname = designid+'.oad'+str(des)
-        libr, libscr = save_design(doe2[des], ct, fname, lat, rid, desid, constructid, partinfo, project)
-        if cfasta:
-            save_seqs(outfolder, constructid, libr, seql)
-        if sbolgen:
-            save_sbol(desid, libr, constructid, path.join(outfolder))
-        if rid is not None:
-            fname = designid+'.oadi'+str(des)
-            libr, libscr = save_design(doe2[des], ct, fname, lat, rid=None, designid=desid, constructid=constructid)
-        if vars(arg)['i']:
-            dinfor = " Orthogonal Array Design; Library size: %d; Seed: %d" % (len(librs),seed)
+        dinfo = " Factors: %d; Levels: %d; Positional: %d [Full permutations]" % (len(factors), np.prod(nlevels), len(npos))
+    print('SBC-DoE; '+dinfo)
+    finfow.write(dinfo+'\n')
+    if arg.j is not None:
+        jmp = arg.j
+        doeJMP = readJMP(jmp)
+        for des in range(0, len(doeJMP)):
+            fname = designid+'.j'+str(des)
+            libr, libscr = save_design(doeJMP[des],ct, fname, lat, rid=None, designid=desid, constructid=constructid, RegisterinIce=arg.I)  
+            if vars(arg)['i']:
+                dinfor =  " Custom design %d; Library size: %d" % (des, len(libr))
+            else:
+                dinfor = " Custom design %d; Library size: %d; Segments: %d; Screening size: %d" % (des, len(libr), len(segments(libr, ct)), np.sum(libscr))
+            print(dinfor)
+            finfow.write(dinfor+'\n')
+            if cad:
+                pcad(fname, rid)
+    if vars(arg)['r']:
+        doe1 = conn.r.doe1(factors=np.array(factors), nlevels=np.array(nlevels), timeout=30)
+        for des in range(0, len(doe1)):
+            fname = designid+'.d'+str(des)
+            libr, libscr = save_design(doe1[des], ct, fname, lat, rid, desid, constructid, partinfo, project, RegisterinIce=arg.I)
+            if rid is not None:
+                fname = designid+'.di'+str(des)
+                libr, libscr = save_design(doe1[des], ct, fname, lat, rid=None, designid=desid, constructid=constructid, RegisterinIce=arg.I)
+            if vars(arg)['i']:
+                dinfor =  " Design %d; Model S^%d; Library size: %d" % (des, des+1, len(libr))
+            else:
+                dinfor = " Design %d; Model S^%d; Library size: %d; Segments: %d; Screening size: %d" % (des, des+1, len(libr), len(segments(libr, ct)), np.sum(libscr))
+            print(dinfor)
+            finfow.write(dinfor+'\n')
+            if cad:
+                pcad(fname, rid)
+    if vars(arg)['o']:
+        xarg = vars(arg)['x']
+        if xarg is None:
+            seed = np.random.randint(1e6)
         else:
-            dinfor = " Orthogonal Array Design; Library size: %d; Segments: %d; Screening size: %d; Seed: %d" % (len(libr), len(segments(libr, ct)), np.sum(libscr), seed)
-        print(dinfor)
-        finfow.write(dinfor+'\n')
-        if cad:
-            pcad(fname, rid)
-finfow.close()
+            seed = xarg       
+        doe2 = conn.r.doe2(factors=np.array(factors), nlevels=np.array(nlevels),
+                           timeout=30, seed=seed)
+
+        for des in range(0, len(doe2)):
+            fname = designid+'.oad'+str(des)
+            libr, libscr = save_design(doe2[des], ct, fname, lat, rid, desid, constructid, partinfo, project, RegisterinIce=arg.I)
+            if cfasta:
+                save_seqs(outfolder, constructid, libr, seql)
+            if sbolgen:
+                save_sbol(desid, libr, constructid, path.join(outfolder))
+            if rid is not None:
+                fname = designid+'.oadi'+str(des)
+                libr, libscr = save_design(doe2[des], ct, fname, lat, rid=None, designid=desid, constructid=constructid, RegisterinIce=arg.I)
+            if vars(arg)['i']:
+                dinfor = " Orthogonal Array Design; Library size: %d; Seed: %d" % (len(librs),seed)
+            else:
+                dinfor = " Orthogonal Array Design; Library size: %d; Segments: %d; Screening size: %d; Seed: %d" % (len(libr), len(segments(libr, ct)), np.sum(libscr), seed)
+            print(dinfor)
+            finfow.write(dinfor+'\n')
+            if cad:
+                pcad(fname, rid)
+    finfow.close()
 
 

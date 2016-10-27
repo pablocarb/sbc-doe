@@ -16,10 +16,11 @@ from datetime import datetime
 import pyRserve
 import numpy as np
 import doeopt
+import sys
+sys.path.append('/mnt/SBC1/code/sbc-api')   
 import sbolutil as sbol
 import sbcid
 import iceutils
-    
 
 def construct(f):
     ct = []

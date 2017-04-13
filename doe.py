@@ -22,6 +22,7 @@ import sbolutil as sbol
 import sbcid
 import iceutils
 import csv
+import json
 
 def construct(f):
     ct = []
@@ -51,6 +52,23 @@ def construct(f):
 def convert_construct(xct):
     rid = {}
     ct = []
+    for p in xct:
+        comp = xct[p]['component']
+        if comp == 'promoter':
+            sbcid = False
+            for l in xct[p]['levels']:
+                if l.startswith('SBC'):
+                    sbcid = True
+                    break
+            if sbcid:
+                ll = []
+                for l in xct[p]['levels']:
+                    if l.startswith('SBC'):
+                        lev = l
+                    else:
+                        lev = None
+                    ll.append(lev)
+                xct[p]['levels'] = ll
     for p in sorted(xct):
         levels = xct[p]['levels']
         comp = xct[p]['component']
@@ -152,6 +170,77 @@ def read_excel(e, s=1):
             part = None
         fact[factor]['levels'].append(part)
     return fact, seql, partinfo
+
+def compact_factors(fact):
+    """ This is a temporary solution for positional factors.
+    At this point, we would accept only pure permutations for the positional factors.
+    It should be improved to give more flexibility.
+    """
+    positional = set()
+    watch = set()
+    for pos in fact:
+        if fact[pos]['positional']:
+            positional.add(pos)
+            levels = fact[pos]['levels']
+            fingerprint = ' '.join(sorted(fact[pos]['levels']))
+            watch.add(fingerprint)
+            if len(watch) > 1:
+                raise Exception('Multiple positional factors') 
+    if len(positional) != len(levels):
+        raise Exception('More factors than slots')
+    lpos = sorted(positional)
+    llev = sorted(levels)
+    for i in range(0, len(lpos)):
+        fact[lpos[i]]['levels'] = [llev[i]]
+    return fact
+            
+
+def read_json(f):
+    """ Read json file return experimental design info.
+    Initially the goal will be to replicate same result as with the Excel file.
+    TO DO: templates are combinations that we want to keep!! Modify code...
+    """
+    mid = None
+    seql = {}
+    fact = {}
+    partinfo = {}
+    jdata = json.load(open(f))
+    collections = {}
+    for col in jdata['plan']['collections']:
+        collections[col['id']] = col
+    constraints = jdata['plan']['specifications']['constraints']
+    instances = {}
+    for i in range(0, len(constraints)):
+        for col in constraints[i]['collection']:
+            if col not in instances:
+                instances[col] = set()
+            instances[col].add(i+1)
+    for i in range(0, len(constraints)):
+        factor = i + 1
+        levels = []
+        positional = 0
+        for colId in constraints[i]['collection']:
+            if len(instances[colId]) > 1:
+                positional = 1
+            item = collections[colId]
+            # We assume no mix of types
+            component = item['type']
+            for partid in item['options']:
+                part = partid.split('/')[-1]
+                levels.append(part)
+                partinfo[part] = {}
+        if len(levels) > 0:
+            fact[factor] = {'positional': positional,
+                            'component': component,
+                            'levels': levels,
+                            'sequence': None
+            }
+    for part in partinfo:
+        partinfo[part]['shortDescription'] = component
+        partinfo[part]['name'] = part
+    fact = compact_factors(fact)
+    seed = int(jdata['seed'])
+    return fact, partinfo, seed
 
 
 def getfactors(ct, permut=False):
@@ -262,14 +351,14 @@ def getsbcid(name, description, RegisterinICE= False, designid=None):
 
 
 
-def save_design(design, ct, fname, lat, rid = None, designid = None, constructid = [], partinfo = [], project=None, RegisterinIce=False):
+def save_design(design, ct, fname, lat, npos, rid = None, designid = None, constructid = [], partinfo = [], project=None, RegisterinIce=False):
     ndes = {}
     n = 0
     # Read the design for each factor
     for x in ct:
         fact = x[0]
         found = False
-        if type(design['design'] == dict):
+        if type(design['design']) == dict:
             flist = design['design'].keys()
         else:
             flist = design['design'].keys
@@ -334,10 +423,10 @@ def save_design(design, ct, fname, lat, rid = None, designid = None, constructid
                     if part in partinfo:
                         if name != '':
                             name += '-'
-                        if partinfo[part]['shortDescription'] == 'Promoter':
+                        if partinfo[part]['shortDescription'].lower() == 'promoter':
                             name += '('
                         name += partinfo[part]['name']
-                        if partinfo[part]['shortDescription'] == 'Promoter':
+                        if partinfo[part]['shortDescription'].lower() == 'promoter':
                             name += ')'
 
             if name == '':
@@ -375,7 +464,12 @@ def save_seqs(outpath, constructid, libr, seql):
         write_fasta(path.join(outpath, constructid[c]+'.fasta'), constructid[c], seq)
 
 # If firstcolumn, the first column is the contruct name
-def pcad(f, rid=None, firstcolumn=True, label=True):
+def pcad(f, rid=None, firstcolumn=True, label=True, predefined='predefined_colors.txt'):
+    pcolors = {}
+    if predefined is not None:
+        for l in open(predefined):
+            m = l.rstrip().split()
+            pcolors[m[0]] = int(m[1])
     i = 0
     gl = []
     gl1 = []
@@ -428,12 +522,20 @@ def pcad(f, rid=None, firstcolumn=True, label=True):
                     ow.write('p p%s %d\n' % (v[1],int(v[1])*2+2))
             else:
     #            ow.write('c %s %d\n' % (v[0],gl.index(v[0])+1))
+                try:
+                    color = gl1.index(x)+1
+                except:
+                    import pdb
+                    pdb.set_trace()
                 if rid is not None and x in rid:
-                       ow.write('c %s %d\n' % (rid[x],gl1.index(x)+1))
+                    name = rid[x]
                 elif len(count[v[0]]) > 1:
-                       ow.write('c %s %d\n' % (x,gl1.index(x)+1))
+                    name = x
                 else:
-                       ow.write('c %s %d\n' % (v[0],gl1.index(x)+1))                
+                    name = v[0]
+                if name in pcolors:
+                    color = pcolors[name]
+                ow.write('c %s %d\n' % (name,color))
         ow.write('t\n')
         ow.write('# Arcs\n')
         ow.close()
@@ -446,7 +548,7 @@ def pcad(f, rid=None, firstcolumn=True, label=True):
             ofl.append("label:'"+labels[i]+"'")
         of = pcad+'.png'
         ofl.append(of)
-        cmd = 'perl piget.pl '+pcad+' '+of
+        cmd = 'perl '+path.join(path.dirname(path.realpath(__file__)), 'piget.pl')+' '+pcad+' '+of
         system(cmd)
 
     cmd = 'convert '+' '.join(ofl)+' -append '+f+'.png'
@@ -503,19 +605,57 @@ def arguments():
                         help='Register project in ICE [False]')
     parser.add_argument('-j', 
                         help='DoE from JMP')
-    arg = parser.parse_args()
+    parser.add_argument('-w', action='store_true',
+                        help='DoE from json (web version)')
+    parser.add_argument('-G', 
+                        help='Regenerate pigeon from file and exit')
+    return parser
+
+def command_line(parser, args=None):
+    if args is None:
+        arg = parser.parse_args()
+    else:
+        arg = parser.parse_args(args)        
     return arg
 
-if __name__ == '__main__':
-    arg = arguments()
-    f = vars(arg)['f']
-    p = vars(arg)['p']
-    cfasta = vars(arg)['c']
-    desid = vars(arg)['id']
-    outpath = vars(arg)['O']
-    sbolgen = vars(arg)['b']
-    cad = vars(arg)['g']
-    project = vars(arg)['v']
+
+def run_doe(args=None):
+    parser = arguments()
+    arg = command_line(parser, args)
+    if arg.G is not None:
+        rid = {}
+        aa = []
+        bb = []
+        f1 = arg.G+'.di0'
+        f2 = arg.G+'.d0'
+        if path.exists(f1):
+            for l in open(f1):
+               m = l.rstrip().split('\t')
+               for k in m:
+                   bb.append(k)
+        if path.exists(f2):
+            for l in open(f2):
+               ll = l.rstrip()
+               for k in range(0, len(ll), 16):
+                   val = l[k:(k+16)]
+                   aa.append(re.sub(' ', '', val))
+        for i in range(0, len(aa)):
+            rid[bb[i]] = aa[i]
+        pcad(f1, rid)
+        sys.exit()
+    f = arg.f
+    p = arg.p
+    cfasta = arg.c
+    desid = arg.id
+    outpath = arg.O
+    sbolgen = arg.b
+    cad = arg.g
+    project = arg.v
+    xarg = arg.x
+    if xarg is None:
+        seed = np.random.randint(1e6)
+    else:
+        seed = xarg
     if outpath is None or not path.exists(outpath):
         outpath = path.dirname(f)
     outfolder = path.join(outpath, desid)
@@ -523,16 +663,23 @@ if __name__ == '__main__':
         mkdir(outfolder)
     inputfile = path.join(outfolder, path.basename(f))
     shutil.copyfile(f, inputfile)
-    sys.argv[1] = '"'+path.basename(inputfile)+'"'
-    cmd = ' '.join(sys.argv)
-    s = int(vars(arg)['s'])
-    try:
-        xct, seql, partinfo = read_excel(inputfile, s)
+    if args is None:
+        sys.argv[1] = '"'+path.basename(inputfile)+'"'
+        cmd = ' '.join(sys.argv)
+    else:
+        cmd = ' '.join(args)
+    s = int(arg.s)
+    if not arg.w:
+        try:
+            xct, seql, partinfo = read_excel(inputfile, s)
+            ct, rid = convert_construct(xct)
+        except:
+            # old txt format (needs update)
+            ct, cid = construct(inputfile)
+            seql = {}
+    else:
+        xct, partinfo, seed = read_json(inputfile)
         ct, rid = convert_construct(xct)
-    except:
-        # old txt format (needs update)
-        ct, cid = construct(inputfile)
-        seql = {}
     if arg.c:
         for s in seql:
             write_fasta(path.join(outpath, outfolder, s+'.fasta'), s, seql[s])
@@ -546,7 +693,7 @@ if __name__ == '__main__':
         if not p:
             lat = conn.r.permut(len(npos), ptype='latin')
         else:
-            lat = conn.r.permut(len(npos), ptype='full')
+            lat = np.array(conn.r.permut(len(npos), ptype='full'))
         lat = lat.astype(int)
         nlevels.append(len(lat))
     if not p:
@@ -568,8 +715,11 @@ if __name__ == '__main__':
         jmp = arg.j
         doeJMP = readJMP(jmp)
         for des in range(0, len(doeJMP)):
+            if rid is not None:
+                fname = designid+'.ji'+str(des)
+                libr, libscr = save_design(doeJMP[des], ct, fname, lat, npos, rid=rid, designid=desid, constructid=constructid, RegisterinIce=arg.I)
             fname = designid+'.j'+str(des)
-            libr, libscr = save_design(doeJMP[des],ct, fname, lat, rid=None, designid=desid, constructid=constructid, RegisterinIce=arg.I)  
+            libr, libscr = save_design(doeJMP[des],ct, fname, lat, npos, rid=None, designid=desid, constructid=constructid, RegisterinIce=arg.I)
             if vars(arg)['i']:
                 dinfor =  " Custom design %d; Library size: %d" % (des, len(libr))
             else:
@@ -578,14 +728,14 @@ if __name__ == '__main__':
             finfow.write(dinfor+'\n')
             if cad:
                 pcad(fname, rid)
-    if vars(arg)['r']:
+    if arg.r:
         doe1 = conn.r.doe1(factors=np.array(factors), nlevels=np.array(nlevels), timeout=30)
         for des in range(0, len(doe1)):
             fname = designid+'.d'+str(des)
-            libr, libscr = save_design(doe1[des], ct, fname, lat, rid, desid, constructid, partinfo, project, RegisterinIce=arg.I)
+            libr, libscr = save_design(doe1[des], ct, fname, lat, npos, rid, desid, constructid, partinfo, project, RegisterinIce=arg.I)
             if rid is not None:
                 fname = designid+'.di'+str(des)
-                libr, libscr = save_design(doe1[des], ct, fname, lat, rid=None, designid=desid, constructid=constructid, RegisterinIce=arg.I)
+                libr, libscr = save_design(doe1[des], ct, fname, lat, npos, rid=None, designid=desid, constructid=constructid, RegisterinIce=arg.I)
             if vars(arg)['i']:
                 dinfor =  " Design %d; Model S^%d; Library size: %d" % (des, des+1, len(libr))
             else:
@@ -594,27 +744,22 @@ if __name__ == '__main__':
             finfow.write(dinfor+'\n')
             if cad:
                 pcad(fname, rid)
-    if vars(arg)['o']:
-        xarg = vars(arg)['x']
-        if xarg is None:
-            seed = np.random.randint(1e6)
-        else:
-            seed = xarg       
+    if arg.o:
         doe2 = conn.r.doe2(factors=np.array(factors), nlevels=np.array(nlevels),
                            timeout=30, seed=seed)
 
         for des in range(0, len(doe2)):
             fname = designid+'.oad'+str(des)
-            libr, libscr = save_design(doe2[des], ct, fname, lat, rid, desid, constructid, partinfo, project, RegisterinIce=arg.I)
+            libr, libscr = save_design(doe2[des], ct, fname, lat, npos, rid, desid, constructid, partinfo, project, RegisterinIce=arg.I)
             if cfasta:
                 save_seqs(outfolder, constructid, libr, seql)
             if sbolgen:
                 save_sbol(desid, libr, constructid, path.join(outfolder))
             if rid is not None:
                 fname = designid+'.oadi'+str(des)
-                libr, libscr = save_design(doe2[des], ct, fname, lat, rid=None, designid=desid, constructid=constructid, RegisterinIce=arg.I)
+                libr, libscr = save_design(doe2[des], ct, fname, lat, npos, rid=None, designid=desid, constructid=constructid, RegisterinIce=arg.I)
             if vars(arg)['i']:
-                dinfor = " Orthogonal Array Design; Library size: %d; Seed: %d" % (len(librs),seed)
+                dinfor = " Orthogonal Array Design; Library size: %d; Seed: %d" % (len(libscr),seed)
             else:
                 dinfor = " Orthogonal Array Design; Library size: %d; Segments: %d; Screening size: %d; Seed: %d" % (len(libr), len(segments(libr, ct)), np.sum(libscr), seed)
             print(dinfor)
@@ -622,5 +767,8 @@ if __name__ == '__main__':
             if cad:
                 pcad(fname, rid)
     finfow.close()
+    return outfolder, fname
 
 
+if __name__ == '__main__':
+    run_doe()

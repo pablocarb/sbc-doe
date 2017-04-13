@@ -2,19 +2,30 @@
 
 latin <- function(n, nrand = 20) {
     library('crossdes')
-    x <- des.MOLS(n,n)[1:n, 1:n]
+    if (n > 2) {
+        x <- des.MOLS(n,n)[1:n, 1:n]
+    } else {
+        if (n ==2 ) {
+            x <- matrix(c(1,2,2,1), nrow=2)
+        } else {
+            x <- matrix(c(1))
+        }
+    }
+    
 #    x <- matrix(1:n, n, n)
 #    x <- t(x)
 #    for (i in 2:n) {
 #        x[i, ] <- x[i, c(i:n, 1:(i-1))]
 #    }
-    if (nrand > 0) {
-        for (i in 1:nrand) {
-            x <- x[sample(n), ]
-            x <- x[,sample(n)]
+    if (n > 2) {
+        if (nrand > 0) {
+            for (i in 1:nrand) {
+                x <- x[sample(n), ]
+                x <- x[,sample(n)]
+            }
         }
+        x <- x[, order(x[1,])]
     }
-    x <- x[, order(x[1,])]
     return(x)
 }
 

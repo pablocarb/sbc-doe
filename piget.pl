@@ -25,8 +25,22 @@ $a = `cat pigeon.php`;
 $a = `grep "Weyekin" pigeon.php`;
 ($fileName) = ($a =~ /src\s*=([0-9a-zA-Z\/\\\.\-]+.png)\w*/);
 
+
 # Download the image file.
 $a = `wget -q $url/$fileName -O $ARGV[1]`;
+
+# Tell the user the name of the file downloaded.
+print STDOUT "Image $fileName retrieved. Bye.\n";
+
+$fileName =~ s/-trans\.png/.fig.svg/;
+
+$ARGV[1] =~ s/\.png/.svg/;
+
+# Download the image file.
+$a = `wget -q $url/$fileName -O $ARGV[1]`;
+
+
+print "`wget -q $url/$fileName -O $ARGV[1]\n";
 
 # Tell the user the name of the file downloaded.
 print STDOUT "Image $fileName retrieved. Bye.\n";

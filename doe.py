@@ -23,6 +23,9 @@ import sbcid
 import iceutils
 import csv
 import json
+import random
+
+ID_COUNTER = 0
 
 def construct(f):
     ct = []
@@ -49,7 +52,7 @@ def construct(f):
     return ct
 
 
-def convert_construct(xct):
+def convert_construct(xct, AddBlankPromoter=False):
     rid = {}
     ct = []
     for p in xct:
@@ -87,7 +90,7 @@ def convert_construct(xct):
             pos = 0
         cid = str(xct[p]['component'])+str(p)
         i = 1
-        if comp == 'promoter' and len(levels) > len(filter( lambda h: h is None, levels)):
+        if AddBlankPromoter and comp == 'promoter' and len(levels) > len(filter( lambda h: h is None, levels)):
             rid[cid+'_'+str(i)] = None
             i += 1
         for x in range(0, len(levels)):
@@ -158,8 +161,8 @@ def read_excel(e, s=1):
             if mid is None:
                 mid = map_oldid()
             part = mid[part]
-            seql[part] = get_sequence(part)
-            partinfo[part] = get_part(part)
+            seql[part] = None #get_sequence(part)
+#            partinfo[part] = None #get_part(part)
         if factor not in fact:
             fact[factor] = {'positional': positional,
                             'component': component,
@@ -345,8 +348,13 @@ def getsbcid(name, description, RegisterinICE= False, designid=None):
         ice.add_write_permission(sbcID, group_number)
         partid = ice.get_part(sbcID)['partId']
     else:
-        response = sbcid.reserve('DE', 1, doeopt.ICE_EMAIL, 'Construct in combinatorial library '+designid)
-        partid = "SBCDE%06d" % (response['result'][0]['id'],)
+        try:
+            response = sbcid.reserve('DE', 1, doeopt.ICE_EMAIL, 'Construct in combinatorial library '+designid)
+            partid = "SBCDE%06d" % (response['result'][0]['id'],)
+        except:
+#            partid = "SBCDE%06d" % (random.randint(0,1000),)
+            partid = "SBCDL%06d" % (ID_COUNTER,)
+            ID_COUNTER = ID_COUNTER + 1
     return partid
 
 
@@ -464,7 +472,7 @@ def save_seqs(outpath, constructid, libr, seql):
         write_fasta(path.join(outpath, constructid[c]+'.fasta'), constructid[c], seq)
 
 # If firstcolumn, the first column is the contruct name
-def pcad(f, rid=None, firstcolumn=True, label=True, predefined='predefined_colors.txt'):
+def pcad(f, rid=None, firstcolumn=True, label=True, predefined='predefined_colors.txt', clean=True, nolabel=False):
     pcolors = {}
     if predefined is not None:
         for l in open(predefined):
@@ -488,6 +496,10 @@ def pcad(f, rid=None, firstcolumn=True, label=True, predefined='predefined_color
             count[v[0]].add(x)
             if x not in gl1:
                 gl1.append(x)
+    if nolabel:
+        nl = 'nl'
+    else:
+        nl = ' '
     fl = []
     labels = []
     for l in open(f):
@@ -509,17 +521,17 @@ def pcad(f, rid=None, firstcolumn=True, label=True, predefined='predefined_color
                     ow.write('t\n')
                     # For promoters, we just give promoter number and color it accordingly
                     if rid is not None and x in rid:
-                        ow.write('p %s %d\n' % (rid[x],int(v[1])*2+2))
+                        ow.write('p %s %d %s\n' % (rid[x],int(v[1])*2+2, nl))
                     else:
-                        ow.write('p p%s %d\n' % (v[1],int(v[1])*2+2))
+                        ow.write('p p%s %d %s\n' % (v[1],int(v[1])*2+2,nl))
 
             elif x.startswith('plasmid'):
     #                ow.write('p %s %d\n' % (v[0],gl.index(v[0])+1))
     # For promoters, we just give promoter number and color it accordingly
                 if rid is not None and x in rid:
-                    ow.write('p %s %d\n' % (rid[x],int(v[1])*2+2))
+                    ow.write('p %s %d %s\n' % (rid[x],int(v[1])*2+2, nl))
                 else:
-                    ow.write('p p%s %d\n' % (v[1],int(v[1])*2+2))
+                    ow.write('p p%s %d %s\n' % (v[1],int(v[1])*2+2, nl))
             else:
     #            ow.write('c %s %d\n' % (v[0],gl.index(v[0])+1))
                 try:
@@ -535,27 +547,30 @@ def pcad(f, rid=None, firstcolumn=True, label=True, predefined='predefined_color
                     name = v[0]
                 if name in pcolors:
                     color = pcolors[name]
-                ow.write('c %s %d\n' % (name,color))
+                ow.write('c %s %d %s\n' % (name,color,nl))
         ow.write('t\n')
         ow.write('# Arcs\n')
         ow.close()
         i += 1
-
     ofl = []
+    ofs = []
     for i in range(0,len(fl)):
         pcad = fl[i]
         if label:
             ofl.append("label:'"+labels[i]+"'")
         of = pcad+'.png'
         ofl.append(of)
+        ofsvg = pcad+'.svg'
+        ofs.append(ofsvg)
         cmd = 'perl '+path.join(path.dirname(path.realpath(__file__)), 'piget.pl')+' '+pcad+' '+of
         system(cmd)
 
-    cmd = 'convert '+' '.join(ofl)+' -append '+f+'.png'
+    cmd = 'convert '+' '.join(ofl)+' -append -flatten '+f+'.png'
     system(cmd)
-    for x in fl+ofl:
-        if path.exists(x):
-            unlink(x)
+    if clean:
+        for x in fl+ofl+ofs:
+            if path.exists(x):
+                unlink(x)
 
 def readJMP(jmp):
     header = None
@@ -609,6 +624,12 @@ def arguments():
                         help='DoE from json (web version)')
     parser.add_argument('-G', 
                         help='Regenerate pigeon from file and exit')
+    parser.add_argument('-k', action='store_false',
+                        help='Keep pigeon files')
+    parser.add_argument('-nolab', action='store_true',
+                        help='Do not use labels in pigeon figures')
+    parser.add_argument('-blankPromoter', action='store_true',
+                        help='Add blank promoter even if not explicitly given')
     return parser
 
 def command_line(parser, args=None):
@@ -622,12 +643,29 @@ def command_line(parser, args=None):
 def run_doe(args=None):
     parser = arguments()
     arg = command_line(parser, args)
+    f = arg.f
+    p = arg.p
+    cfasta = arg.c
+    desid = arg.id
+    outpath = arg.O
+    sbolgen = arg.b
+    cad = arg.g
+    project = arg.v
+    xarg = arg.x
+    if outpath is None or not path.exists(outpath):
+        outpath = path.dirname(f)
+    outfolder = path.join(outpath, desid)
+    if not path.exists(outfolder):
+        mkdir(outfolder)
+    logfile = path.join(outfolder, 'doe.log')
+    with open(logfile, 'w') as handler:
+        handler.write(' '.join(sys.argv)+'\n')
     if arg.G is not None:
         rid = {}
         aa = []
         bb = []
-        f1 = arg.G+'.di0'
-        f2 = arg.G+'.d0'
+        f1 = arg.G+'di0'
+        f2 = arg.G+'d0'
         if path.exists(f1):
             for l in open(f1):
                m = l.rstrip().split('\t')
@@ -641,28 +679,17 @@ def run_doe(args=None):
                    aa.append(re.sub(' ', '', val))
         for i in range(0, len(aa)):
             rid[bb[i]] = aa[i]
-        pcad(f1, rid)
+        pcad(f1, rid, clean=arg.k, nolabel=arg.nolab)
         sys.exit()
-    f = arg.f
-    p = arg.p
-    cfasta = arg.c
-    desid = arg.id
-    outpath = arg.O
-    sbolgen = arg.b
-    cad = arg.g
-    project = arg.v
-    xarg = arg.x
     if xarg is None:
         seed = np.random.randint(1e6)
     else:
         seed = xarg
-    if outpath is None or not path.exists(outpath):
-        outpath = path.dirname(f)
-    outfolder = path.join(outpath, desid)
-    if not path.exists(outfolder):
-        mkdir(outfolder)
     inputfile = path.join(outfolder, path.basename(f))
-    shutil.copyfile(f, inputfile)
+    try:
+        shutil.copyfile(f, inputfile)
+    except:
+        pass
     if args is None:
         sys.argv[1] = '"'+path.basename(inputfile)+'"'
         cmd = ' '.join(sys.argv)
@@ -672,14 +699,14 @@ def run_doe(args=None):
     if not arg.w:
         try:
             xct, seql, partinfo = read_excel(inputfile, s)
-            ct, rid = convert_construct(xct)
+            ct, rid = convert_construct(xct, AddBlankPromoter=arg.blankPromoter)
         except:
             # old txt format (needs update)
             ct, cid = construct(inputfile)
             seql = {}
     else:
         xct, partinfo, seed = read_json(inputfile)
-        ct, rid = convert_construct(xct)
+        ct, rid = convert_construct(xct, AddBlankPromoter=arg.blankPromoter)
     if arg.c:
         for s in seql:
             write_fasta(path.join(outpath, outfolder, s+'.fasta'), s, seql[s])
@@ -727,7 +754,7 @@ def run_doe(args=None):
             print(dinfor)
             finfow.write(dinfor+'\n')
             if cad:
-                pcad(fname, rid)
+                pcad(fname, rid, clean=arg.k, nolabel=arg.nolab)
     if arg.r:
         doe1 = conn.r.doe1(factors=np.array(factors), nlevels=np.array(nlevels), timeout=30)
         for des in range(0, len(doe1)):
@@ -743,8 +770,9 @@ def run_doe(args=None):
             print(dinfor)
             finfow.write(dinfor+'\n')
             if cad:
-                pcad(fname, rid)
+                pcad(fname, rid, clean=arg.k, nolabel=arg.nolab)
     if arg.o:
+
         doe2 = conn.r.doe2(factors=np.array(factors), nlevels=np.array(nlevels),
                            timeout=30, seed=seed)
 
@@ -765,10 +793,11 @@ def run_doe(args=None):
             print(dinfor)
             finfow.write(dinfor+'\n')
             if cad:
-                pcad(fname, rid)
+                pcad(fname, rid, clean=arg.k, nolabel=arg.nolab)
     finfow.close()
     return outfolder, fname
 
 
 if __name__ == '__main__':
     run_doe()
+    

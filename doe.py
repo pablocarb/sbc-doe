@@ -120,9 +120,10 @@ def map_oldid():
     xl = wb.get_sheet_by_name(wb.get_sheet_names()[0])
     nl = xl.get_highest_row()
     mid = {}
+    offset = 1
     for r in range(1, nl):
-        newid = xl.cell(row=r, column= 0).value
-        oldid = xl.cell(row=r, column= 1).value
+        newid = xl.cell(row=r, column= offset).value
+        oldid = xl.cell(row=r, column= offset+1).value
         mid[oldid] = newid
     return mid
 
@@ -137,17 +138,23 @@ def read_excel(e, s=1):
     import openpyxl
     wb = openpyxl.load_workbook(e)
     xl = wb.get_sheet_by_name(wb.get_sheet_names()[s-1])
-    nl = xl.get_highest_row()
+#    nl = xl.get_highest_row()
     mid = None
     seql = {}
     fact = {}
     partinfo = {}
-    for r in range(1, nl):
+    offset = 1
+    fcol = 0
+    r = 0
+    while fcol is not None:
+        r += 1
+        fcol = None
         try:
-            factor = int(xl.cell(row=r, column= 0).value)
-            positional = xl.cell(row=r, column= 1).value
-            component = xl.cell(row=r, column= 2).value
-            part = xl.cell(row=r, column= 3).value
+            fcol = xl.cell(row=r, column= offset).value
+            factor = int(fcol)
+            positional = xl.cell(row=r, column= offset+1).value
+            component = str(xl.cell(row=r, column= offset+2).value)
+            part = str(xl.cell(row=r, column= offset+3).value)
         except:
             continue
         if part is None:
@@ -337,6 +344,7 @@ def save_sbol(desid, libr, constructid, outfolder):
 
 # sbc id generator
 def getsbcid(name, description, RegisterinICE= False, designid=None):
+    global ID_COUNTER
     if RegisterinICE:
         responsible = doeopt.ICE_USER
         email = doeopt.ICE_EMAIL
@@ -689,6 +697,7 @@ def run_doe(args=None):
     try:
         shutil.copyfile(f, inputfile)
     except:
+        raise Exception('Input file not found')
         pass
     if args is None:
         sys.argv[1] = '"'+path.basename(inputfile)+'"'
@@ -756,7 +765,11 @@ def run_doe(args=None):
             if cad:
                 pcad(fname, rid, clean=arg.k, nolabel=arg.nolab)
     if arg.r:
-        doe1 = conn.r.doe1(factors=np.array(factors), nlevels=np.array(nlevels), timeout=30)
+        # Trivial case, no need of calling planor package
+        if len(factors) == 1:
+            doe1 = [{'design': {factors[0]: range(1, nlevels[0]+1) } } ]
+        else:
+            doe1 = conn.r.doe1(factors=np.array(factors), nlevels=np.array(nlevels), timeout=30)
         for des in range(0, len(doe1)):
             fname = designid+'.d'+str(des)
             libr, libscr = save_design(doe1[des], ct, fname, lat, npos, rid, desid, constructid, partinfo, project, RegisterinIce=arg.I)

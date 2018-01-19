@@ -14,6 +14,7 @@ $desc = `cat $pigeonFile`;
 
 # Set up Pigeon's real URL in a variable for convenience.
 $url = "http://synbiotools.bu.edu:5801";
+$url = "http://pigeon.synbiotools.org";
 
 # Post Pigeon program to the server and get the php file it generates.
 $a = `wget -q --post-data="desc=$desc" $url/pigeon1.php $url/pigeon.php`;

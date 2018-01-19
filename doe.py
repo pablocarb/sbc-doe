@@ -94,7 +94,7 @@ def convert_construct(xct, AddBlankPromoter=False):
             rid[cid+'_'+str(i)] = None
             i += 1
         for x in range(0, len(levels)):
-            if levels[x] is not None:
+#            if levels[x] is not None:
                 rid[cid+'_'+str(i)] = levels[x]
                 i += 1
         ct.append((cid, len(levels), str(pos), 0, deg))
@@ -571,6 +571,7 @@ def pcad(f, rid=None, firstcolumn=True, label=True, predefined='predefined_color
         ofsvg = pcad+'.svg'
         ofs.append(ofsvg)
         cmd = 'perl '+path.join(path.dirname(path.realpath(__file__)), 'piget.pl')+' '+pcad+' '+of
+        print(cmd)
         system(cmd)
 
     cmd = 'convert '+' '.join(ofl)+' -append -flatten '+f+'.png'
@@ -584,7 +585,7 @@ def readJMP(jmp):
     header = None
     design = []
     doejmp = {'design': {}}
-    for row in csv.reader(open(jmp)):
+    for row in csv.reader(open(jmp, 'rU')):
         if header is None:
             header = row
             continue

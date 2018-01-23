@@ -1,6 +1,83 @@
 # Use always multiples of 2
 
-latin <- function(n, nrand = 20) {
+latin.augment <- function(m1, m2) {
+    ms <- list()
+    for (x in seq(1, max(m1))) {
+        ms[[x]] <- m2 + (x-1)*max(m2)
+    }
+    m4 <- NULL
+    for (i in seq(1, ncol(m1))) {
+        m3 <- NULL
+        for (j in seq(1, ncol(m1))) {
+            if (is.null(m3)) {
+                m3 <- ms[[ m1[i,j] ]]
+            } else {
+                m3 <- cbind( m3, ms[[ m1[i,j] ]] )
+            }
+        }
+        if (is.null(m4)) {
+            m4 <- m3
+        } else {
+            m4 <- rbind(m4, m3)
+        }
+            
+    }
+    return(m4)
+}
+
+latin <- function(ntotal) {
+    library('gmp')
+    library('crossdes')
+    # Find all prime factors
+    m <- factorize(ntotal)
+    m <-  as.integer(m)
+    sq <- list()
+    # Join any 2 * 2 as 4 (orthogonal latin squares only for n >= 3)
+    fours <- c()
+    while ( (length(m) >=2) && (m[2] == 2) ) {
+        if (length(m) > 2) {
+            m <- m[3:length(m) ]
+            fours <- c(fours, 4)
+        } else {
+            m <- c(4)
+        }
+    }
+    m <- c(fours, m)
+    # Compute orthogonal squares of each factor
+    for (n in m) {
+        if (n > 2) {
+            x <- des.MOLS(n,n)
+        } else {
+            if (n ==2 ) {
+                x <- matrix(c(1,2,2,1), nrow=2)
+            } else {
+                x <- matrix(c(1))
+            }
+        }
+        sq[[n]] <- x
+    
+    }
+    # Augment the matrix with all prime factors
+    m1 <- sq[[ m[1] ]]
+    if (length(m) == 1) {
+        return( m1 )
+    } else {
+        m2 <- sq[[ m[2] ]]
+        mx <- latin.augment(m1, m2)
+        if (length(m) > 2) {
+            for (i in seq(3, length(m))) {
+                m3 <- sq[[ m[i] ]]
+                mx <- latin.augment(mx, m3)
+            }
+        }
+    }
+             
+    return(mx)
+}
+
+
+
+latin.old <- function(n, nrand = 20) {
     library('crossdes')
     if (n > 2) {
         x <- des.MOLS(n,n)[1:n, 1:n]

@@ -75,7 +75,7 @@ def convert_construct(xct, AddBlankPromoter=False):
     for p in sorted(xct):
         levels = xct[p]['levels']
         comp = xct[p]['component']
-        # This is an exception for promoters, need to be improved
+        # deg is actual the number of possible values, in case of promoters we can have multiple empty values
         deg = 0
         if comp  == 'promoter':
             deg = len(levels) - len(filter( lambda h: h is None, levels))
@@ -374,6 +374,8 @@ def save_design(design, ct, fname, lat, npos, rid = None, designid = None, const
     for x in ct:
         fact = x[0]
         found = False
+        # Get the list of designed factors
+        # For historical reasons (R), two types are possible
         if type(design['design']) == dict:
             flist = design['design'].keys()
         else:
@@ -384,14 +386,21 @@ def save_design(design, ct, fname, lat, npos, rid = None, designid = None, const
             n = len(ndes[fact])
         else:
             ndes[fact] = np.array([])
-    for x in ct:
-        fact = x[0]
-        nlevels = x[1]
-        dege = x[4]
-        if dege > 0:
-            for i in range(0, len(ndes[fact])):
-                if ndes[fact][i] > dege:
-                    ndes[fact][i] = 1
+    # Note 01/18: To avoid, this is confusing and prone to errors.
+    # It is better to use the information in the rid dictionary
+    # coming from the DoE specification table
+    # to know if we have an empty part (a promoter)
+    # for x in ct:
+    #     fact = x[0]
+    #     nlevels = x[1]
+    #     dege = x[4]
+    #     if dege > 0:
+    #         for i in range(0, len(ndes[fact])):
+    #             if ndes[fact][i] > dege:
+    #                 import pdb
+    #                 pdb.set_trace()
+    #                 ndes[fact][i] = 1
+
     
     for x in ct:
         fact = x[0]
@@ -408,6 +417,8 @@ def save_design(design, ct, fname, lat, npos, rid = None, designid = None, const
         ll = []
         screen = 1
         for y in ct:
+#            import pdb
+#            pdb.set_trace()
             fa = y[0]
             le = y[1]
             po = y[2]
@@ -590,10 +601,16 @@ def readJMP(jmp):
             header = row
             continue
         for i in range(0, len(header)):
+            if len(row[i]) == 0:
+                continue
             fact = header[i]
             if fact not in doejmp['design']:
                 doejmp['design'][fact] = []
-            doejmp['design'][fact].append(int(row[i]))
+            try:
+                val = int(row[i])
+            except:
+                val = int( re.sub('^L', '', row[i]) )
+            doejmp['design'][fact].append( val )
     design.append(doejmp)
     return design
 
@@ -708,7 +725,7 @@ def run_doe(args=None):
     s = int(arg.s)
     if not arg.w:
         try:
-            xct, seql, partinfo = read_excel(inputfile, s)
+            xct, seql, partinfo = read_excel(inputfile, s)            
             ct, rid = convert_construct(xct, AddBlankPromoter=arg.blankPromoter)
         except:
             # old txt format (needs update)
@@ -723,6 +740,8 @@ def run_doe(args=None):
     wd = path.dirname(path.realpath(__file__))
     conn = pyRserve.connect()
     conn.r.source(path.join(wd, 'mydeo.r'))
+    # we keep only factors with more than one level
+    # npos are the factors that can be rearranged
     factors, nlevels, npos = getfactors(ct)
     lat = None
     if len(npos) > 0:
@@ -732,6 +751,7 @@ def run_doe(args=None):
         else:
             lat = np.array(conn.r.permut(len(npos), ptype='full'))
         lat = lat.astype(int)
+        # add the leves corresponding to the shuffling
         nlevels.append(len(lat))
     if not p:
         designid = path.join(outfolder, desid)

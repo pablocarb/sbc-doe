@@ -17,13 +17,15 @@ import pyRserve
 import numpy as np
 import doeopt
 import sys
+import csv
+import json
+import random
 sys.path.append('/mnt/SBC1/code/sbc-api')   
 import sbolutil as sbol
 import sbcid
 import iceutils
-import csv
-import json
-import random
+sys.path.append('/mnt/SBC1/code/sbc-viscad')
+import viscad
 
 ID_COUNTER = 0
 
@@ -638,6 +640,8 @@ def arguments():
                         help='Do not generate sbol file')
     parser.add_argument('-g', action='store_true',  
                         help='Generate pigeon cad image')
+    parser.add_argument('-V', action='store_true',
+                        help='Generate viscad diagram')
     parser.add_argument('-c', action='store_true',  
                         help='Generate construct fasta files')
     parser.add_argument('-v', 
@@ -676,16 +680,17 @@ def run_doe(args=None):
     outpath = arg.O
     sbolgen = arg.b
     cad = arg.g
+    vcad = arg.V
     project = arg.v
     xarg = arg.x
     if outpath is None or not path.exists(outpath):
         outpath = path.dirname(f)
-    outfolder = path.join(outpath, desid)
+    outfolder = path.join(outpath)
     if not path.exists(outfolder):
         mkdir(outfolder)
-    logfile = path.join(outfolder, 'doe.log')
-    with open(logfile, 'w') as handler:
-        handler.write(' '.join(sys.argv)+'\n')
+    logfile = path.join(outfolder, desid+'.log')
+    with open(logfile, 'a') as handler:
+        handler.write(' '.join(['"{}"'.format(x) for x in sys.argv])+'\n')
     if arg.G is not None:
         rid = {}
         aa = []
@@ -712,16 +717,16 @@ def run_doe(args=None):
     else:
         seed = xarg
     inputfile = path.join(outfolder, path.basename(f))
-    try:
-        shutil.copyfile(f, inputfile)
-    except:
-        raise Exception('Input file not found')
-        pass
+#    try:
+#        shutil.copyfile(f, inputfile)
+#    except:
+#        raise Exception('Input file not found')
+#        pass
     if args is None:
         sys.argv[1] = '"'+path.basename(inputfile)+'"'
-        cmd = ' '.join(sys.argv)
+        cmd = ' '.join(['"{}"'.format(x) for x in sys.argv])
     else:
-        cmd = ' '.join(args)
+        cmd = ' '.join(['"{}"'.format(x) for x in args])
     s = int(arg.s)
     if not arg.w:
         try:
@@ -769,12 +774,16 @@ def run_doe(args=None):
     print('SBC-DoE; '+dinfo)
     finfow.write(dinfo+'\n')
     if arg.j is not None:
+        if not path.exists(arg.j):
+            arg.j = path.join(outfolder, arg.j)
+        if not path.exists(arg.j):
+            raise Exception('DoE file not found')
         jmp = arg.j
         doeJMP = readJMP(jmp)
         for des in range(0, len(doeJMP)):
             if rid is not None:
-                fname = designid+'.ji'+str(des)
-                libr, libscr = save_design(doeJMP[des], ct, fname, lat, npos, rid=rid, designid=desid, constructid=constructid, RegisterinIce=arg.I)
+                fname0 = designid+'.ji'+str(des)
+                libr, libscr = save_design(doeJMP[des], ct, fname0, lat, npos, rid=rid, designid=desid, constructid=constructid, RegisterinIce=arg.I)
             fname = designid+'.j'+str(des)
             libr, libscr = save_design(doeJMP[des],ct, fname, lat, npos, rid=None, designid=desid, constructid=constructid, RegisterinIce=arg.I)
             if vars(arg)['i']:
@@ -785,6 +794,8 @@ def run_doe(args=None):
             finfow.write(dinfor+'\n')
             if cad:
                 pcad(fname, rid, clean=arg.k, nolabel=arg.nolab)
+            if vcad:
+                viscad.runViscad(args=[fname, '-i', fname0, '-l', logfile])
     if arg.r:
         # Trivial case, no need of calling planor package
         if len(factors) == 1:

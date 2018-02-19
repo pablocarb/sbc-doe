@@ -27,7 +27,7 @@ import iceutils
 sys.path.append('/mnt/SBC1/code/sbc-viscad')
 import viscad
 
-ID_COUNTER = 0
+ID_COUNTER = 1
 
 def construct(f):
     ct = []
@@ -347,6 +347,12 @@ def save_sbol(desid, libr, constructid, outfolder):
 # sbc id generator
 def getsbcid(name, description, RegisterinICE= False, designid=None):
     global ID_COUNTER
+    # Try to get design number if possible, otherwise keep the full label
+    try:
+        desn = "DE%02d" % (int(re.sub('^.*SBC', '', designid)),)
+    except:
+        desn = designid
+                        
     if RegisterinICE:
         responsible = doeopt.ICE_USER
         email = doeopt.ICE_EMAIL
@@ -360,16 +366,18 @@ def getsbcid(name, description, RegisterinICE= False, designid=None):
     else:
         try:
             response = sbcid.reserve('DE', 1, doeopt.ICE_EMAIL, 'Construct in combinatorial library '+designid)
-            partid = "SBCDE%06d" % (response['result'][0]['id'],)
+            partid = "SBC_%s_PL%02d" % (desn, response['result'][0]['id'])
         except:
 #            partid = "SBCDE%06d" % (random.randint(0,1000),)
-            partid = "SBCDL%06d" % (ID_COUNTER,)
+            partid = "SBC_%s_PL%02d" % (desn,ID_COUNTER)
             ID_COUNTER = ID_COUNTER + 1
     return partid
 
 
 
-def save_design(design, ct, fname, lat, npos, rid = None, designid = None, constructid = [], partinfo = [], project=None, RegisterinIce=False):
+def save_design(design, ct, fname, lat, npos, rid = None, designid = None,
+                constructid = [], partinfo = [], project=None, RegisterinIce=False, WriteCsv=False):
+    ### Potentially the csv could be overwritten if multiple designs?
     ndes = {}
     n = 0
     # Read the design for each factor
@@ -413,6 +421,8 @@ def save_design(design, ct, fname, lat, npos, rid = None, designid = None, const
         ndes['pos'] = np.array(design['design']['pos'])
     # Store designs
     of = open(fname, 'w')
+    if WriteCsv:
+        cw = csv.writer(open(re.sub('\.[^.]*$', '.csv', fname), 'w') )
     libr = []
     libscr = []
     for x in range(0, n):
@@ -473,6 +483,13 @@ def save_design(design, ct, fname, lat, npos, rid = None, designid = None, const
             for part in ll:
                 of.write("%s\t" % (part,))
         else:
+            if WriteCsv:
+                xx = []
+                xx.append(constructid[x])
+                for part in ll:
+                    if len(part) > 0:
+                        xx.append(part)
+                cw.writerow(xx)
             of.write("%16s" % (constructid[x],))
             for part in ll:
                 of.write("%16s" % (part,))
@@ -783,7 +800,7 @@ def run_doe(args=None):
         for des in range(0, len(doeJMP)):
             if rid is not None:
                 fname0 = designid+'.ji'+str(des)
-                libr, libscr = save_design(doeJMP[des], ct, fname0, lat, npos, rid=rid, designid=desid, constructid=constructid, RegisterinIce=arg.I)
+                libr, libscr = save_design(doeJMP[des], ct, fname0, lat, npos, rid=rid, designid=desid, constructid=constructid, RegisterinIce=arg.I, WriteCsv=True)
             fname = designid+'.j'+str(des)
             libr, libscr = save_design(doeJMP[des],ct, fname, lat, npos, rid=None, designid=desid, constructid=constructid, RegisterinIce=arg.I)
             if vars(arg)['i']:

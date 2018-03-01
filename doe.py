@@ -422,7 +422,7 @@ def save_design(design, ct, fname, lat, npos, rid = None, designid = None,
     # Store designs
     of = open(fname, 'w')
     if WriteCsv:
-        cw = csv.writer(open(re.sub('\.[^.]*$', '.csv', fname), 'w') )
+        cw = csv.writer(open(re.sub('\.[^.]*$', '.txt', fname), 'w'), dialect='excel-tab' )
     libr = []
     libscr = []
     for x in range(0, n):

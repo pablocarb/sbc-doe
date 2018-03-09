@@ -16,6 +16,7 @@ from datetime import datetime
 import pyRserve
 import numpy as np
 import doeopt
+import brOligos
 import sys
 import csv
 import json
@@ -677,6 +678,8 @@ def arguments():
                         help='Do not use labels in pigeon figures')
     parser.add_argument('-blankPromoter', action='store_true',
                         help='Add blank promoter even if not explicitly given')
+    parser.add_argument('-bro', action='store_true',
+                        help='Add file with full list of bridging oligos')
     return parser
 
 def command_line(parser, args=None):
@@ -857,6 +860,10 @@ def run_doe(args=None):
             if cad:
                 pcad(fname, rid, clean=arg.k, nolabel=arg.nolab)
     finfow.close()
+    if arg.bro:
+        ### TO DO: ADD brOligos
+        # brArgs = [txtFile, j0File, '-outFile', broFile]
+        # brOligos.run_bro( brArgs )
     return outfolder, fname
 
 

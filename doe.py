@@ -16,7 +16,7 @@ from datetime import datetime
 import pyRserve
 import numpy as np
 import doeopt
-import brOligos
+import brOrligos
 import sys
 import csv
 import json
@@ -27,6 +27,7 @@ import sbcid
 import iceutils
 sys.path.append('/mnt/SBC1/code/sbc-viscad')
 import viscad
+import brOrligos
 
 ID_COUNTER = 1
 
@@ -377,7 +378,7 @@ def getsbcid(name, description, RegisterinICE= False, designid=None):
 
 
 def save_design(design, ct, fname, lat, npos, rid = None, designid = None,
-                constructid = [], partinfo = [], project=None, RegisterinIce=False, WriteCsv=False):
+                constructid = [], partinfo = [], project=None, RegisterinIce=False, WriteCsv=None):
     ### Potentially the csv could be overwritten if multiple designs?
     ndes = {}
     n = 0
@@ -397,7 +398,7 @@ def save_design(design, ct, fname, lat, npos, rid = None, designid = None,
             n = len(ndes[fact])
         else:
             ndes[fact] = np.array([])
-    # Note 01/18: To avoid, this is confusing and prone to errors.
+    # Note 01/18: Avoid this below, it is confusing and prone to errors.
     # It is better to use the information in the rid dictionary
     # coming from the DoE specification table
     # to know if we have an empty part (a promoter)
@@ -422,8 +423,8 @@ def save_design(design, ct, fname, lat, npos, rid = None, designid = None,
         ndes['pos'] = np.array(design['design']['pos'])
     # Store designs
     of = open(fname, 'w')
-    if WriteCsv:
-        cw = csv.writer(open(re.sub('\.[^.]*$', '.txt', fname), 'w'), dialect='excel-tab' )
+    if WriteCsv is not None:
+        cw = csv.writer(open(WriteCsv, 'w'), dialect='excel-tab' )
     libr = []
     libscr = []
     for x in range(0, n):
@@ -484,7 +485,7 @@ def save_design(design, ct, fname, lat, npos, rid = None, designid = None,
             for part in ll:
                 of.write("%s\t" % (part,))
         else:
-            if WriteCsv:
+            if WriteCsv is not None:
                 xx = []
                 xx.append(constructid[x])
                 for part in ll:
@@ -689,6 +690,15 @@ def command_line(parser, args=None):
         arg = parser.parse_args(args)        
     return arg
 
+def write_log(logfile, arg):
+    s = []
+    for x in arg:
+        if len(x.split(' ')) > 1:
+            s.append( '"{}"'.format(x) )
+        else:
+            s.append( x )
+    with open(logfile, 'a') as handler:
+        handler.write( ' '.join(s)+'\n' )
 
 def run_doe(args=None):
     parser = arguments()
@@ -709,8 +719,9 @@ def run_doe(args=None):
     if not path.exists(outfolder):
         mkdir(outfolder)
     logfile = path.join(outfolder, desid+'.log')
-    with open(logfile, 'a') as handler:
-        handler.write(' '.join(['"{}"'.format(x) for x in sys.argv])+'\n')
+    write_log(logfile, sys.argv)
+#    with open(logfile, 'a') as handler:
+#        handler.write(' '.join(['"{}"'.format(x) for x in sys.argv])+'\n')
     if arg.G is not None:
         rid = {}
         aa = []
@@ -793,7 +804,7 @@ def run_doe(args=None):
         dinfo = " Factors: %d; Levels: %d; Positional: %d [Full permutations]" % (len(factors), np.prod(nlevels), len(npos))
     print('SBC-DoE; '+dinfo)
     finfow.write(dinfo+'\n')
-    if arg.j is not None:
+    if arg.j is not None: # Custom design (column separated)
         if not path.exists(arg.j):
             arg.j = path.join(outfolder, arg.j)
         if not path.exists(arg.j):
@@ -803,7 +814,8 @@ def run_doe(args=None):
         for des in range(0, len(doeJMP)):
             if rid is not None:
                 fname0 = designid+'.ji'+str(des)
-                libr, libscr = save_design(doeJMP[des], ct, fname0, lat, npos, rid=rid, designid=desid, constructid=constructid, RegisterinIce=arg.I, WriteCsv=True)
+                csvname = re.sub('\.[^.]*$', '.txt', fname0)
+                libr, libscr = save_design(doeJMP[des], ct, fname0, lat, npos, rid=rid, designid=desid, constructid=constructid, RegisterinIce=arg.I, WriteCsv=csvname)
             fname = designid+'.j'+str(des)
             libr, libscr = save_design(doeJMP[des],ct, fname, lat, npos, rid=None, designid=desid, constructid=constructid, RegisterinIce=arg.I)
             if vars(arg)['i']:
@@ -815,8 +827,8 @@ def run_doe(args=None):
             if cad:
                 pcad(fname, rid, clean=arg.k, nolabel=arg.nolab)
             if vcad:
-                viscad.runViscad(args=[fname, '-i', fname0, '-l', logfile])
-    if arg.r:
+                viscad.runViscad(args=[fname, '-i', csvname, '-l', logfile])
+    if arg.r: # Regular fractional factorial design
         # Trivial case, no need of calling planor package
         if len(factors) == 1:
             doe1 = [{'design': {factors[0]: range(1, nlevels[0]+1) } } ]
@@ -836,7 +848,7 @@ def run_doe(args=None):
             finfow.write(dinfor+'\n')
             if cad:
                 pcad(fname, rid, clean=arg.k, nolabel=arg.nolab)
-    if arg.o:
+    if arg.o: # Orthogonal arrays
 
         doe2 = conn.r.doe2(factors=np.array(factors), nlevels=np.array(nlevels),
                            timeout=30, seed=seed)
@@ -861,9 +873,14 @@ def run_doe(args=None):
                 pcad(fname, rid, clean=arg.k, nolabel=arg.nolab)
     finfow.close()
     if arg.bro:
-        ### TO DO: ADD brOligos
-        # brArgs = [txtFile, j0File, '-outFile', broFile]
-        # brOligos.run_bro( brArgs )
+        # Needs some improvemet: not valid for all cases
+        try:
+            broFile = designid+'.bro'
+            brArgs = [csvname, fname, '-outFile', broFile, '-logFile', broFile+'.log']
+            brOrligos.run_bro( brArgs )
+            write_log(logfile, ['broligos'] + brArgs)
+        except:
+            pass
     return outfolder, fname
 
 

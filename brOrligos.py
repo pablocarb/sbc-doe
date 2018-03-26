@@ -3,6 +3,14 @@ from __future__ import print_function
 import re
 import argparse
 
+def outInfo(message, outHandler=None, printInfo=True):
+    try:
+        outHandler.write(message+'\n')
+    except:
+        pass
+    if printInfo:
+        print(message)
+
 def readFiles(doe, info):
     ct = {}
     ci = {}
@@ -22,9 +30,10 @@ def readFiles(doe, info):
                 ci[cid].append( part )
     return ct, ci
     
-def bridges(ct, ci):
+def bridges(ct, ci, logFile=None):
     pool = set()
     ori = set()
+    res = set()
     pro1 = set()
     prom = set()
     gene = set()
@@ -38,7 +47,7 @@ def bridges(ct, ci):
             ice = ct[x][i]
             end = ice
             if part.startswith('resistance'):
-                continue
+               res.add(end) 
             if part.startswith('origin'):
                 ori.add( end )
             elif part.startswith('promoter3'):
@@ -50,21 +59,85 @@ def bridges(ct, ci):
             if start is not None:
                 pool.add( tuple( sorted( (start, end) ) ) )
             start = end
+    outh = None
+    if logFile is not None:
+        try:
+            outh = open(logFile, 'w')
+        except:
+            pass
+    oriRes = False
+    geneProm = set()
+    geneOri = set()
     pool2 = set()
+    outInfo('Broligos generator', outh)
+    outInfo('(Ori, Res, Prom1, iProm, Gene) =  (%d, %d, %d, %d, %d)' % (len(ori), len(res),  len(pro1), len(prom), len(gene)), outh)
+    n = 0
+    # Pairing: Origin - Resistance
     for o in ori:
+        # For resistance
+        for r in res:
+            # Take only one
+            if not oriRes:
+                pool2.add( (o,r) )
+                oriRes = True
+        
+    outInfo('%d pairings: Origin - Resistance' % (len(pool2) - n,), outh)
+    n += len(pool2)
+    
+    # Pairing: Resistance - Promoter
+    for r in res:
         for p in pro1:
-            pool2.add( (o,p) )
-    for p in pro1 | prom:
+            pool2.add( (r,p) )
+    outInfo('%d pairings: Resistance - First promoter' % (len(pool2) - n,), outh)
+    n = len(pool2)
+
+    for p in pro1:
         for g in gene:
             pool2.add( (p,g) )
-            if p not in pro1:
+    outInfo('%d pairings: First promoter - Gene' % (len(pool2) - n,), outh)
+    n = len(pool2)
+    
+    for p in prom:
+        for g in gene:
+            pool2.add( (p,g) )
+    outInfo('%d pairing: Intergenic promoters - Gene' % (len(pool2) - n,), outh)
+    n = len(pool2)
+
+
+    for g in gene:
+        for p in prom:
+            if g not in geneProm:
                 pool2.add( (g,p) )
+                geneProm.add( g )
+    outInfo('%d pairings: Gene - Intergenic promoters' % (len(pool2) - n,), outh)
+    n = len(pool2)
+
+    # Pairing: Gene - Gene
     for g1 in gene:
         for g2 in gene:
             if g1 == g2:
                 continue
             pool2.add( (g1, g2) )
             pool2.add( (g2, g1) )
+    outInfo('%d pairings: Gene - Gene' % (len(pool2) - n,), outh)
+    n = len(pool2)
+
+    # Pairing: Gene - Origin
+    for g in gene:
+        for o in ori:
+            if g not in geneOri:
+                pool2.add( (g,o) )
+                geneOri.add( g )
+    outInfo('%d pairings: Gene - Origin' % (len(pool2) - n,), outh)
+    n = len(pool2)
+
+    outInfo('%d total pairings' % (n,), outh)
+
+    try:
+        outh.close()
+    except:
+        pass
+
     return pool, pool2
 
 def arguments():
@@ -75,6 +148,8 @@ def arguments():
                         help='Info about factors')
     parser.add_argument('-outFile', 
                         help='Output file')
+    parser.add_argument('-logFile', 
+                        help='Log file')
     return parser
 
 
@@ -89,7 +164,7 @@ def run_bro(args=None):
     parser = arguments()
     arg = command_line(parser, args)
     ct, ci =readFiles(arg.doe, arg.info)
-    pool, pool2 = bridges(ct,ci)
+    pool, pool2 = bridges(ct, ci, arg.logFile)
     if arg.outFile is None:
         for x in sorted(pool2):
             print( '\t'.join( (x[0], x[1], '_'.join(x)) ) )

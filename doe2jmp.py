@@ -124,7 +124,7 @@ def arguments():
     parser.add_argument('inputFile', 
                         help='Input file with specifications (excel format)')
     parser.add_argument('libSize', 
-                        help='Input file with specifications (excel format)')
+                        help='Library size')
     parser.add_argument('-O',  default=None,
                         help='Output folder (default: same as input)')
     parser.add_argument('-s', default=1,

@@ -93,7 +93,9 @@ def bridges(ct, ci, logFile=None):
 
     for p in pro1:
         for g in gene:
-            pool2.add( (p,g) )
+            if g not in geneProm:
+                pool2.add( (p,g) )
+                geneProm.add( g )
     outInfo('%d pairings: First promoter - Gene' % (len(pool2) - n,), outh)
     n = len(pool2)
     
@@ -106,9 +108,7 @@ def bridges(ct, ci, logFile=None):
 
     for g in gene:
         for p in prom:
-            if g not in geneProm:
-                pool2.add( (g,p) )
-                geneProm.add( g )
+            pool2.add( (g,p) )
     outInfo('%d pairings: Gene - Intergenic promoters' % (len(pool2) - n,), outh)
     n = len(pool2)
 

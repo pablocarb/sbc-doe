@@ -6,16 +6,18 @@ Doe2JMP is licensed under the MIT License.
 To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 
 @author:  Pablo Carbonell, SYNBIOCHEM
-@description: Prepare file for JMP from the DoE sheet
+@description: Prepare files for JMP from the DoE sheet
 '''
 from doe import read_excel
 import argparse
 import os, re, sys
 import numpy as np
 
-def makeDoeScript(fact, outfile, size, seed=None, starts=1040):
+def makeDoeScript(fact, outfile, size, seed=None, starts=1040, executable=False, makeTable=False):
     """ Full Doe Script in JMP """
     doe = []
+    if executable:
+        doe.append( '//!' )
     doe.append( 'DOE(' )
     doe.append( '\t'+'Custom Design,' )
     doe.append( '\t'+'{Add Response( Maximize, "Y", ., ., . ),' )
@@ -57,8 +59,17 @@ def makeDoeScript(fact, outfile, size, seed=None, starts=1040):
         for j in range(i+1, nfact+1):
             doe.append( '\t'+'Add Alias Term( {{ {}, 1 }}, {{ {}, 1 }} ),'.format( str(i), str(j) ))
     doe.append( '\t'+'Set Sample Size( {} ),'.format( str( int(size) ) ) )
-    doe.append( '\t'+'Make Design}' )
+    if makeTable:
+        doe.append( '\t'+'Make Design,' )
+        doe.append( '\t'+'Make Table' )
+    else:
+        doe.append( '\t'+'Make Design' )
+    doe.append('\t'+'}')
     doe.append( ');')
+    if makeTable:
+        tabfile = re.sub("jsl$", "dat", outfile)
+        doe.append( 'Current Data Table() << Save("{}", Text);'.format(tabfile) )
+        doe.append( 'Quit();' )
     with open(outfile, 'w') as handler:
         handler.write( '\n'.join( doe ) )
                         
@@ -91,6 +102,7 @@ def addColumn(name, vartype, levels):
         
 
 def makeTableScript(tableName, fact, outfile):
+    """ Create a JMP script that generates the factor table """
     script = []
     npos = 0
     for pos in sorted(fact):
@@ -128,23 +140,27 @@ def arguments():
     parser.add_argument('-O',  default=None,
                         help='Output folder (default: same as input)')
     parser.add_argument('-s', default=1,
-                        help='Excel sheet number (default 1)')
+                        help='Excel sheet number (default: 1)')
     parser.add_argument('-o',  default=None,
                         help='Output file (default: same as input file with jmp extension)')
     parser.add_argument('-r', action='store_true',
                         help='Overwrite if exists')
     parser.add_argument('-x', default=None,
-                        help='Seed (default random)')
+                        help='Seed (default: random)')
     parser.add_argument('-n', default=100,
-                        help='Number of starts (default 100)')
+                        help='Number of starts (default: 100)')
     parser.add_argument('-l', default=None,
                         help='Log file') 
+    parser.add_argument('-e', action='store_true',
+                        help='Create an autoexecutable script')
+    parser.add_argument('-t', action='store_true',
+                        help='Make and save the table')
     return parser
 
 if __name__ == '__main__':
     parser = arguments()
     arg = parser.parse_args()
-    fact, seql, partinfo = read_excel(arg.inputFile)
+    fact, seql, partinfo = read_excel( arg.inputFile )
     name = re.sub( '\.[^.]+$', '', os.path.basename(arg.inputFile) )
     outnametable = name+'_table.jsl'
     outname = name+'.jsl'
@@ -164,7 +180,7 @@ if __name__ == '__main__':
     outfile = os.path.join( outdir, outname )
     if os.path.exists( outfile ) and not arg.r:
         raise Exception('File exists!')
-    makeDoeScript( fact, outfile, size=arg.libSize, seed=arg.x, starts=arg.n )
+    makeDoeScript( fact, outfile, size=arg.libSize, seed=arg.x, starts=arg.n, executable=arg.e, makeTable=arg.t )
     logfile = os.path.join( outdir, logname)
     with open(logfile, 'w') as handler:
-        handler.write(' '.join(['"{}"'.format(x) for x in sys.argv])+'\n')
+        handler.write( ' '.join(['"{}"'.format(x) for x in sys.argv])+'\n' )

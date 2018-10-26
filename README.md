@@ -3,17 +3,20 @@
 ## Requirements
 
 1. Create `doe` environment and activate it.
-
 ```
 conda create --name doe --file doe.conda
 conda activate doe
 ```
 2. Install `R` packages `numbers`, `crossdes`, `combinat`, `R.utils`, `planor`,  `DoE.base`.
-
 ```
 R -e install.packages(c('numbers','crossdes','combinat',\
 'R.utils','planor','DoE.base'),\
 dependencies=TRUE, repos='http://rforge.net/')
+```
+
+3. Clone [`viscad`](https://github.com/pablocarb/viscad).
+```
+git clone https://github.com/pablocarb/viscad
 ```
 
 ## Workflow:

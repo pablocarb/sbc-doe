@@ -13,7 +13,6 @@ import shutil, glob
 import sys, re
 import argparse
 from datetime import datetime
-#import pyRserve
 import numpy as np
 import pandas as pd
 import brOrligos
@@ -21,12 +20,6 @@ import sys
 import csv
 import json
 import random
-#import doeopt
-#sys.path.append('/mnt/SBC1/code/sbc-api')   
-#import sbolutil as sbol
-#import sbcid
-#import iceutils
-#sys.path.append('/mnt/SBC1/code/sbc-viscad')
 from viscad import viscad
 import brOrligos
 import rpy2
@@ -134,11 +127,7 @@ def write_fasta(fname, seqid, sequence):
     ow.close()
 
 def read_excel(e, s=1):
-#    import openpyxl
-#    wb = openpyxl.load_workbook(e)
-#    xl = wb.get_sheet_by_name(wb.get_sheet_names()[s-1])
     df = pd.read_excel(e)
-#    nl = xl.get_highest_row()
     mid = None
     seql = {}
     fact = {}
@@ -150,12 +139,6 @@ def read_excel(e, s=1):
         r += 1
         fcol = None
         try:
-
-#            fcol = xl.cell(row=r, column= offset).value
-#            factor = int(fcol)
-#            positional = xl.cell(row=r, column= offset+1).value
-#            component = str(xl.cell(row=r, column= offset+2).value)
-#            part = str(xl.cell(row=r, column= offset+3).value)
             fcol = df.iloc[r-1, offset-1]
             factor = int( fcol )
             positional = df.iloc[r-1, offset]
@@ -422,8 +405,6 @@ def save_design(design, ct, fname, lat, npos, rid = None, designid = None,
         ll = []
         screen = 1
         for y in ct:
-#            import pdb
-#            pdb.set_trace()
             fa = y[0]
             le = y[1]
             po = y[2]
@@ -710,8 +691,6 @@ def run_doe(args=None):
         mkdir(outfolder)
     logfile = path.join(outfolder, desid+'.log')
     write_log(logfile, sys.argv)
-#    with open(logfile, 'a') as handler:
-#        handler.write(' '.join(['"{}"'.format(x) for x in sys.argv])+'\n')
     if arg.G is not None:
         rid = {}
         aa = []
@@ -738,11 +717,6 @@ def run_doe(args=None):
     else:
         seed = xarg
     inputfile = path.join(outfolder, path.basename(f))
-#    try:
-#        shutil.copyfile(f, inputfile)
-#    except:
-#        raise Exception('Input file not found')
-#        pass
     if args is None:
         sys.argv[1] = '"'+path.basename(inputfile)+'"'
         cmd = ' '.join(['"{}"'.format(x) for x in sys.argv])
@@ -769,8 +743,6 @@ def run_doe(args=None):
     permut = r.permut
     rdoe1 = r.doe1
     rdoe2 = r.doe2
-#    conn = pyRserve.connect()
-#    conn.r.source(path.join(wd, 'mydeo.r'))
     # we keep only factors with more than one level
     # npos are the factors that can be rearranged
     factors, nlevels, npos = getfactors(ct)
@@ -782,7 +754,7 @@ def run_doe(args=None):
         else:
             lat = np.array( permut(len(npos), ptype='full') ) 
         lat = lat.astype(int)
-        # add the leves corresponding to the shuffling
+        # add the levels corresponding to the shuffling
         nlevels.append(len(lat))
     if not p:
         designid = path.join(outfolder, desid)

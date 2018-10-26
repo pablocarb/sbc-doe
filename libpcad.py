@@ -1,4 +1,13 @@
-# Graphical representation of the library using pigeon cad
+'''
+libpcad (c) University of Manchester 2015
+
+libpcad is licensed under the MIT License.
+
+To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
+
+@author: Pablo Carbonell, SYNBIOCHEM
+@description: Graphical representation of the library using pigeon cad. Integrated within the general SYNBIOCHEM DoE pipeline
+'''
 import sys
 from os import system
 from glob import glob

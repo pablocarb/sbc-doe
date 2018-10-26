@@ -1,7 +1,7 @@
 '''
-Doe (c) University of Manchester 2015
+Doepy (c) University of Manchester 2015
 
-Doe is licensed under the MIT License.
+Doepy is licensed under the MIT License.
 
 To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 

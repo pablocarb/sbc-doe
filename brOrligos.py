@@ -1,4 +1,14 @@
-# Generate list of bridging oligos: to be integrated with the general DoE software
+'''
+brOligos (c) University of Manchester 2015
+
+brOligos is licensed under the MIT License.
+
+To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
+
+@author: Pablo Carbonell, SYNBIOCHEM
+@description: Generates the list of bridging oligos for LCR assembly. Integrated within the general SYNBIOCHEM DoE pipeline
+'''
+ 
 from __future__ import print_function
 import re
 import argparse

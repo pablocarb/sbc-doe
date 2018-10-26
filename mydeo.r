@@ -1,4 +1,14 @@
-# Use always multiples of 2
+'''
+mydeo (c) University of Manchester 2015
+
+mydel is licensed under the MIT License.
+
+To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
+
+@author: Pablo Carbonell, SYNBIOCHEM
+@description: Design of experiments routines for combinatorial assembly using R libraries
+'''
+                                        # Use always multiples of 2
 
 latin.augment <- function(m1, m2) {
     ms <- list()

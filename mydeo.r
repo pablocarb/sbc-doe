@@ -26,11 +26,20 @@ latin.augment <- function(m1, m2) {
 }
 
 latin <- function(ntotal) {
-    library('gmp')
+    if (!require('gmp')) {
+        require('numbers')
+        useGMP <- False
+    } else {
+        useGMP <- True
+    }
     library('crossdes')
     # Find all prime factors
-    m <- factorize(ntotal)
-    m <-  as.integer(m)
+    if (useGMP) {
+        m <- factorize(ntotal)
+        m <-  as.integer(m)
+    } else {
+        m <- primeFactors(ntotal)
+    }
     sq <- list()
     # Join any 2 * 2 as 4 (orthogonal latin squares only for n >= 3)
     fours <- c()
@@ -113,7 +122,7 @@ permut <- function(n, ptype='latin', randomize=TRUE) {
         if (randomize) {
             return(latin(n))
         } else {
-            return(latin(n, 0))
+            return(latin(n))
         }
     } else {
         return(permn(n))

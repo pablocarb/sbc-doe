@@ -7,14 +7,20 @@
 conda create --name doe --file doe.conda
 conda activate doe
 ```
-2. Install `R` packages `numbers`, `crossdes`, `combinat`, `R.utils`, `planor`,  `DoE.base`.
+
+2. Install [`pysbol`](https://github.com/SynBioDex/pySBOL) (optional, for future compatibility with SBOL)
+```
+pip install pySBOL
+```
+
+3. Install `R` packages `numbers`, `crossdes`, `combinat`, `R.utils`, `planor`,  `DoE.base`.
 ```
 R -e install.packages(c('numbers','crossdes','combinat',\
 'R.utils','planor','DoE.base'),\
 dependencies=TRUE, repos='http://rforge.net/')
 ```
 
-3. Clone [`viscad`](https://github.com/pablocarb/viscad).
+4. Clone [`viscad`](https://github.com/pablocarb/viscad).
 ```
 git clone https://github.com/pablocarb/viscad
 ```
@@ -28,7 +34,7 @@ git clone https://github.com/pablocarb/viscad
   2.1. Generate JMP scripts:
 
   ```bash
-  python doe2jmp.py inputSpecifications librarySize
+  python doe2jmp.py inputSpecifications librarySize -x seed -r -e -t
   ```
 
   2.2. Compute DoE in JMP.
@@ -85,7 +91,8 @@ optional arguments:
 ```
 
 ```
-usage: doe2jmp.py [-h] [-O O] [-s S] [-o O] [-r] [-x X] [-n N] [-l L]
+usage: doe2jmp.py [-h] [-O O] [-s S] [-o O] [-r] [-x X] [-n N] [-l L] [-e]
+                  [-t]
                   inputFile libSize
 
 Prepare JMP Files. Pablo Carbonell, SYNBIOCHEM, 2018
@@ -97,10 +104,12 @@ positional arguments:
 optional arguments:
   -h, --help  show this help message and exit
   -O O        Output folder (default: same as input)
-  -s S        Excel sheet number (default 1)
+  -s S        Excel sheet number (default: 1)
   -o O        Output file (default: same as input file with jmp extension)
   -r          Overwrite if exists
-  -x X        Seed (default random)
-  -n N        Number of starts (default 100)
+  -x X        Seed (default: random)
+  -n N        Number of starts (default: 100)
   -l L        Log file
+  -e          Create an autoexecutable script
+  -t          Make and save the table
 ```

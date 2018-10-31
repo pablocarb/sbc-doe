@@ -1,13 +1,13 @@
-'''
-mydeo (c) University of Manchester 2015
-
-mydel is licensed under the MIT License.
-
-To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
-
-@author: Pablo Carbonell, SYNBIOCHEM
-@description: Design of experiments routines for combinatorial assembly using R libraries
-'''
+#
+#mydeo (c) University of Manchester 2015
+#
+#mydeo is licensed under the MIT License.
+#
+#To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
+#
+#@author: Pablo Carbonell, SYNBIOCHEM
+#@description: Design of experiments routines for combinatorial assembly using R libraries
+#
                                         # Use always multiples of 2
 
 latin.augment <- function(m1, m2) {
@@ -36,13 +36,13 @@ latin.augment <- function(m1, m2) {
 }
 
 latin <- function(ntotal) {
-    if (!require('gmp')) {
-        require('numbers')
-        useGMP <- False
+    if (!require('gmp', quietly=TRUE)) {
+        require('numbers', quietly=TRUE)
+        useGMP <- FALSE
     } else {
-        useGMP <- True
+        useGMP <- TRUE
     }
-    library('crossdes')
+    require('crossdes', quietly=TRUE)
     # Find all prime factors
     if (useGMP) {
         m <- factorize(ntotal)
@@ -127,7 +127,7 @@ latin.old <- function(n, nrand = 20) {
 
 # Generate full permutation or latin square
 permut <- function(n, ptype='latin', randomize=TRUE) {
-    require('combinat')
+    require('combinat', quietly=TRUE, warn.conflicts = FALSE)
     if (ptype == 'latin') {
         if (randomize) {
             return(latin(n))
@@ -141,9 +141,9 @@ permut <- function(n, ptype='latin', randomize=TRUE) {
 
 # Regular factorial design with implicit S model
 doe1 <- function(factors, nlevels, timeout=5) {
-    require('planor')
-    require('R.utils')
-    require('combinat')
+    require('planor', quietly=TRUE)
+    require('R.utils', quietly=TRUE)
+    require('combinat', quietly=TRUE)
     construct <- planor.factors(
         factors=factors, 
         nlevels=nlevels
@@ -187,7 +187,7 @@ doe1 <- function(factors, nlevels, timeout=5) {
 
 # Orthogonal arrays
 doe2 <- function(factors, nlevels, timeout=5, seed=888) {
-    require('DoE.base')
+    require('DoE.base', quietly=TRUE)
     const.oa <- list()
     des <- oa.design(factor.names=factors, nlevels=nlevels, seed=seed)
     const.oa[[1]] <- list(design=des, resolution=NULL)

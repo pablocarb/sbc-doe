@@ -100,8 +100,7 @@ def convert_construct(xct, AddBlankPromoter=False):
 #            if levels[x] is not None:
                 rid[cid+'_'+str(i)] = levels[x]
                 i += 1
-        ct.append((cid, len(levels), str(pos), 0, deg))
-        
+        ct.append((cid, len(levels), pos, 0, deg))
     return ct, rid
 
 # Transitional function to map old ids to new ICE ids
@@ -172,8 +171,9 @@ def read_excel(e, s=1):
     return fact, seql, partinfo
 
 def compact_factors(fact):
-    """ This is a temporary solution for positional factors.
-    At this point, we would accept only pure permutations for the positional factors.
+    """ This is a temporary solution for positional factors from read_json()
+    At this point, we would accept only permutations for the positional factors.
+    NOT COMPATIBLE with current definitions.
     It should be improved to give more flexibility.
     """
     positional = set()
@@ -198,7 +198,9 @@ def compact_factors(fact):
 def read_json(f):
     """ Read json file return experimental design info.
     Initially the goal will be to replicate same result as with the Excel file.
-    TO DO: templates are combinations that we want to keep!! Modify code...
+    Not finished!!
+    TO DO: templates are combinations that we want to keep! Modify code...,
+    Positional factors are not correctly handled for current definitions
     """
     mid = None
     seql = {}

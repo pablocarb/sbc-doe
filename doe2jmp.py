@@ -8,7 +8,7 @@ To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 @author:  Pablo Carbonell, SYNBIOCHEM
 @description: Prepare files for JMP from the DoE sheet
 '''
-from doe import read_excel
+from doepy import read_excel
 import argparse
 import os, re, sys
 import numpy as np

@@ -610,6 +610,16 @@ def readJMP(jmp):
     design.append(doejmp)
     return design
 
+def doeconv(des):
+    design = des[0]
+#    resolution = des[1]
+    des = { 'design': {} }
+    factors = [n for n in design.names]
+    for i in range(0, len(factors)):
+        des['design'][factors[i]] = [i for i in design[i]]
+    return des
+        
+
 def arguments():
     parser = argparse.ArgumentParser(description='SBC-DeO. Pablo Carbonell, SYNBIOCHEM, 2016')
     parser.add_argument('-p', action='store_true',
@@ -802,13 +812,18 @@ def run_doe(args=None):
         if len(factors) == 1:
             doe1 = [{'design': {factors[0]: range(1, nlevels[0]+1) } } ]
         else:
-            doe1 = rdoe1(factors=np.array(factors), nlevels=np.array(nlevels), timeout=30)
+            doe1rpy = rdoe1(factors=robjects.vectors.StrVector(factors), nlevels=nlevels, timeout=30)
+            doe1 = []
+            for des in doe1rpy:
+                doe1.append( doeconv(des) )
         for des in range(0, len(doe1)):
-            fname = designid+'.d'+str(des)
-            libr, libscr = save_design(doe1[des], ct, fname, lat, npos, rid, desid, constructid, partinfo, project)
+            fnamer = designid+'.d'+str(des)
+            libr, libscr = save_design(doe1[des], ct, fnamer, lat, npos,
+                                       rid, desid, constructid, partinfo, project)
             if rid is not None:
-                fname = designid+'.di'+str(des)
-                libr, libscr = save_design(doe1[des], ct, fname, lat, npos, rid=None, designid=desid, constructid=constructid)
+                fnamer = designid+'.di'+str(des)
+                libr, libscr = save_design(doe1[des], ct, fnamer, lat, npos,
+                                           rid=None, designid=desid, constructid=constructid)
             if vars(arg)['i']:
                 dinfor =  " Design %d; Model S^%d; Library size: %d" % (des, des+1, len(libr))
             else:
@@ -816,22 +831,26 @@ def run_doe(args=None):
             print(dinfor)
             finfow.write(dinfor+'\n')
             if cad:
-                pcad(fname, rid, clean=arg.k, nolabel=arg.nolab)
+                pcad(fnamer, rid, clean=arg.k, nolabel=arg.nolab)
+            if vcad:
+                viscad.runViscad(args=[fnamer, '-i', fnamer, '-l', logfile, '-x', '_fr'])
     if arg.o: # Orthogonal arrays
-
-        doe2 = rdoe2(factors=np.array(factors), nlevels=np.array(nlevels),
+        doe2rpy = rdoe2(factors=robjects.vectors.StrVector(factors), nlevels=robjects.vectors.IntVector(nlevels),
                            timeout=30, seed=seed)
-
+        doe2 = []
+        for des in doe2rpy:
+            doe2.append( doeconv(des) )
+        
         for des in range(0, len(doe2)):
-            fname = designid+'.oad'+str(des)
-            libr, libscr = save_design(doe2[des], ct, fname, lat, npos, rid, desid, constructid, partinfo, project)
+            fnameo = designid+'.oad'+str(des)
+            libr, libscr = save_design(doe2[des], ct, fnameo, lat, npos, rid, desid, constructid, partinfo, project)
             if cfasta:
                 save_seqs(outfolder, constructid, libr, seql)
             if sbolgen:
                 save_sbol(desid, libr, constructid, path.join(outfolder))
             if rid is not None:
-                fname = designid+'.oadi'+str(des)
-                libr, libscr = save_design(doe2[des], ct, fname, lat, npos, rid=None, designid=desid, constructid=constructid)
+                fnameo = designid+'.oadi'+str(des)
+                libr, libscr = save_design(doe2[des], ct, fnameo, lat, npos, rid=None, designid=desid, constructid=constructid)
             if vars(arg)['i']:
                 dinfor = " Orthogonal Array Design; Library size: %d; Seed: %d" % (len(libscr),seed)
             else:
@@ -839,10 +858,14 @@ def run_doe(args=None):
             print(dinfor)
             finfow.write(dinfor+'\n')
             if cad:
-                pcad(fname, rid, clean=arg.k, nolabel=arg.nolab)
+                pcad(fnameo, rid, clean=arg.k, nolabel=arg.nolab)
+            if vcad:
+                # Not working for OAs
+                viscad.runViscad(args=[fnameo, '-i', fnameo, '-l', logfile, '-x', '_oa'])
     finfow.close()
     if arg.bro:
         # Needs some improvemet: not valid for all cases
+        # Currently only implemented for custom designs (JMP)
         try:
             broFile = designid+'.bro'
             brArgs = [csvname, fname, '-outFile', broFile, '-logFile', broFile+'.log']

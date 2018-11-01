@@ -141,6 +141,7 @@ permut <- function(n, ptype='latin', randomize=TRUE) {
 
 # Regular factorial design with implicit S model
 doe1 <- function(factors, nlevels, timeout=5) {
+    print(factors)
     require('planor', quietly=TRUE)
     require('R.utils', quietly=TRUE)
     require('combinat', quietly=TRUE)

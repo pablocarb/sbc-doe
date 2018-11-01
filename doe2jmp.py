@@ -27,8 +27,9 @@ def makeDoeScript(fact, outfile, size, seed=None, starts=1040, executable=False,
         name = fact[pos]['component']+str(pos)
         if len(fact[pos]['levels']) > 1:
             nfact += 1
-            # Define as discrete no-empty factors (at least we need one!)
-            if '-' not in fact[pos]['levels']:
+            # Define as discrete no-empty factors (origin and non-empty promoters at least we need one!)
+            # Genes are in principle excluded
+            if fact[pos]['component'] != 'gene' and '-' not in fact[pos]['levels']:
                 varType = 'Discrete Numeric'
                 theLevels = [ x for x in range(1, len(fact[pos]['levels'])+1 ) ]
                 doe.append( '\t'+'Add Factor( {varType}, {{{levels}}}, "{name}", 0),'.format(varType=varType,
@@ -43,6 +44,7 @@ def makeDoeScript(fact, outfile, size, seed=None, starts=1040, executable=False,
         if fact[pos]['positional'] is not None:
             npos += 1
     if npos >  1:
+        # Total possible arrangements in orthogonal latin squares
         theLevels = ['"L{}"'.format(x) for x in range(1, npos*(npos-1)+1)]
         doe.append( '\t'+'Add Factor( {varType}, {{ {levels} }}, "{name}", 0),'.format(varType='Categorical',
                                                                                        levels=','.join(map(str,theLevels)),
@@ -54,7 +56,11 @@ def makeDoeScript(fact, outfile, size, seed=None, starts=1040, executable=False,
     doe.append( '\t'+'Number of Starts( {} ),'.format( str(starts) ) )
     doe.append( '\t'+'Add Term( {1, 0} ),' )
     for i in range(1, nfact+1):
-        doe.append('\t'+'Add Term( {{ {}, 1 }} ),'.format( str(i) ) )
+        if npos > 1 and i == nfact:
+        # Relax the positional factor, only consider the effect if possible
+            doe.append('\t'+'Add Potential Term( {{ {}, 1 }} ),'.format( str(i) ) )
+        else:
+            doe.append('\t'+'Add Term( {{ {}, 1 }} ),'.format( str(i) ) )
     for i in range(1, nfact+1):
         for j in range(i+1, nfact+1):
             doe.append( '\t'+'Add Alias Term( {{ {}, 1 }}, {{ {}, 1 }} ),'.format( str(i), str(j) ))
@@ -72,6 +78,7 @@ def makeDoeScript(fact, outfile, size, seed=None, starts=1040, executable=False,
         doe.append( 'Quit();' )
     with open(outfile, 'w') as handler:
         handler.write( '\n'.join( doe ) )
+    return outfile
                         
 
 def addColumn(name, vartype, levels):
@@ -180,7 +187,8 @@ if __name__ == '__main__':
     outfile = os.path.join( outdir, outname )
     if os.path.exists( outfile ) and not arg.r:
         raise Exception('File exists!')
-    makeDoeScript( fact, outfile, size=arg.libSize, seed=arg.x, starts=arg.n, executable=arg.e, makeTable=arg.t )
+    outfile = makeDoeScript( fact, outfile, size=arg.libSize, seed=arg.x, starts=arg.n, executable=arg.e, makeTable=arg.t )
     logfile = os.path.join( outdir, logname)
     with open(logfile, 'w') as handler:
         handler.write( ' '.join(['"{}"'.format(x) for x in sys.argv])+'\n' )
+    print(outfile)

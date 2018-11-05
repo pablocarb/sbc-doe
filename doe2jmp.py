@@ -13,13 +13,16 @@ import argparse
 import os, re, sys
 import numpy as np
 
-def makeDoeScript(fact, outfile, size, seed=None, starts=1040, executable=False, makeTable=False):
+def makeDoeScript(fact, outfile, size, seed=None, starts=1040, executable=False, makeTable=False, makeFullFactorial=False):
     """ Full Doe Script in JMP """
     doe = []
     if executable:
         doe.append( '//!' )
     doe.append( 'DOE(' )
-    doe.append( '\t'+'Custom Design,' )
+    if not makeFullFactorial:
+        doe.append( '\t'+'Custom Design,' )
+    else:
+        doe.append( '\t'+'Full Factorial Design,' )
     doe.append( '\t'+'{Add Response( Maximize, "Y", ., ., . ),' )
     npos = 0
     nfact = 0
@@ -162,6 +165,8 @@ def arguments():
                         help='Create an autoexecutable script')
     parser.add_argument('-t', action='store_true',
                         help='Make and save the table')
+    parser.add_argument('-f', action='store_true',
+                        help='Full factorial design')
     return parser
 
 if __name__ == '__main__':
@@ -187,7 +192,7 @@ if __name__ == '__main__':
     outfile = os.path.join( outdir, outname )
     if os.path.exists( outfile ) and not arg.r:
         raise Exception('File exists!')
-    outfile = makeDoeScript( fact, outfile, size=arg.libSize, seed=arg.x, starts=arg.n, executable=arg.e, makeTable=arg.t )
+    outfile = makeDoeScript( fact, outfile, size=arg.libSize, seed=arg.x, starts=arg.n, executable=arg.e, makeTable=arg.t, makeFullFactorial=arg.f )
     logfile = os.path.join( outdir, logname)
     with open(logfile, 'w') as handler:
         handler.write( ' '.join(['"{}"'.format(x) for x in sys.argv])+'\n' )

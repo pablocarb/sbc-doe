@@ -600,6 +600,9 @@ def readJMP(jmp):
             if len(row[i]) == 0:
                 continue
             fact = header[i]
+            # Skip for full factorial
+            if re.search('Pattern',fact):
+                continue
             if fact not in doejmp['design']:
                 doejmp['design'][fact] = []
             try:

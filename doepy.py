@@ -341,9 +341,8 @@ def getsbcid(name, description, designid=None):
     """ Try to get design number if possible, otherwise keep the full label """
     """ Do not register in ICE, this is perfomed downstream in the pipeline """
     global ID_COUNTER
-    
     try:
-        desn = "DE%02d" % (int(re.sub('^.*SBC', '', designid)),)
+        desn = "DE%02d" % ( int( re.sub('^DE', '', re.sub('^.*SBC', '', designid) )), )
     except:
         desn = designid
                         

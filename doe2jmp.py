@@ -67,7 +67,8 @@ def makeDoeScript(fact, outfile, size, seed=None, starts=1040, executable=False,
     for i in range(1, nfact+1):
         for j in range(i+1, nfact+1):
             doe.append( '\t'+'Add Alias Term( {{ {}, 1 }}, {{ {}, 1 }} ),'.format( str(i), str(j) ))
-    doe.append( '\t'+'Set Sample Size( {} ),'.format( str( int(size) ) ) )
+    if not makeFullFactorial:
+        doe.append( '\t'+'Set Sample Size( {} ),'.format( str( int(size) ) ) )        
     if makeTable:
         doe.append( '\t'+'Make Design,' )
         doe.append( '\t'+'Make Table' )

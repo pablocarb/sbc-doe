@@ -134,6 +134,7 @@ def read_excel(e, s=1):
     offset = 1
     fcol = 0
     r = 0
+    multiGene = {}
     while fcol is not None:
         r += 1
         fcol = None
@@ -143,16 +144,33 @@ def read_excel(e, s=1):
             positional = df.iloc[r-1, offset]
             component = str( df.iloc[r-1, offset+1] )
             part = str( df.iloc[r-1, offset+2] )
+            partType =  str( df.iloc[r-1, offset+3] )
             if positional != positional:
                 positional = None
         except:
             continue
+
+        if component == 'gene':
+            if len( partType.split(' ') ) > 1:
+                if partType in multiGene:
+                    # Multi-gene enzyme, do not add as a new factor
+                    mfactor, mpart = multiGene[partType]
+                    mgene = fact[mfactor]['multigene']
+                    if mpart not in mgene:
+                        mgene[mpart]= [ (factor, part) ]
+                    else:
+                        mgene[mpart].append( (factor, part) )
+                    continue
+                else:
+                    multiGene[partType] = (factor, part)
+
         if part is None:
             if factor in fact:
                 i = len(fact[factor]['levels'])+1
             else:
                 i = 1
             part = 'P'+str(factor)+'_'+str(i)
+
         seql[part] = None
         if part is not None and part.startswith('SBCPA'):
             if mid is None:
@@ -163,7 +181,8 @@ def read_excel(e, s=1):
             fact[factor] = {'positional': positional,
                             'component': component,
                             'levels': [],
-                            'sequence': seql[part]
+                            'sequence': seql[part],
+                            'multigene': {}
             }
         if part == 'blank':
             part = None
@@ -341,12 +360,12 @@ def getsbcid(name, description, designid=None):
     """ Try to get design number if possible, otherwise keep the full label """
     """ Do not register in ICE, this is perfomed downstream in the pipeline """
     global ID_COUNTER
-    try:
-        desn = "DE%02d" % ( int( re.sub('^DE', '', re.sub('^.*SBC', '', designid) )), )
-    except:
-        desn = designid
+#    try:
+#        desn = "DE%02d" % ( int( re.sub('^DE', '', re.sub('^.*SBC', '', designid) )), )
+#    except:     
+    desn = designid
                         
-    partid = "SBC_%s_PL%02d" % (desn,ID_COUNTER)
+    partid = "%s_PL%02d" % (desn,ID_COUNTER)
     ID_COUNTER = ID_COUNTER + 1
     return partid
 
@@ -416,8 +435,9 @@ def save_design(design, ct, fname, lat, npos, rid = None, designid = None,
                 if de > 1 or (le  == 1 and de > 0):
                     screen *= pl                        
             # Randomize permutations using a latin square
+            # If only found at one position, ignore the permutation flag
             faid = "%s_%d" % (fa, ndes[fa][x],)
-            if fa in npos:
+            if len(npos)> 1 and fa in npos:
                 perm = ndes['pos'][x]
                 fa = npos[lat[perm-1][npos.index(fa)]-1]
                 faid = "%s_%d" % (fa, ndes[fa][x],)

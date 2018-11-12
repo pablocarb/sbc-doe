@@ -10,6 +10,7 @@ To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 '''
  
 from __future__ import print_function
+import csv
 import re
 import argparse
 
@@ -24,20 +25,35 @@ def outInfo(message, outHandler=None, printInfo=True):
 def readFiles(doe, info):
     ct = {}
     ci = {}
-    with open(doe) as h:
-        for line in h:
-            row = line.rstrip().split('\t')
-            cid = row[0]
-            ct[cid] = row[1:]
-    with open(info) as h:
-        for line in h:
-            row = line.rstrip().split('\t')
-            cid = row[0]
-            ci[cid] = []
-            for part in row[1:]:
-                if part.startswith('promoter') and re.match('.*_[3,4]$', part):
+    # New version with all info in the doe file
+    if re.match('.*\.jmap', doe):
+        with open(doe) as h:
+            csr = csv.reader(h)
+            for row in csr:
+                cid = row[0]
+                ct[cid] = []
+                ci[cid] = []
+                for part in row[1:]:
+                    sbcid, partinfo = part.split(':')
+                    if len(sbcid) == 0:
                         continue
-                ci[cid].append( part )
+                    ct[cid].append(sbcid)
+                    ci[cid].append(partinfo)
+    else:
+        with open(doe) as h:
+            for line in h:
+                row = line.rstrip().split('\t')
+                cid = row[0]
+                ct[cid] = row[1:]
+        with open(info) as h:
+            for line in h:
+                row = line.rstrip().split('\t')
+                cid = row[0]
+                ci[cid] = []
+                for part in row[1:]:
+                    if part.startswith('promoter') and re.match('.*_[3,4]$', part):
+                            continue
+                    ci[cid].append( part )
     return ct, ci
     
 def bridges(ct, ci, logFile=None):
@@ -143,6 +159,8 @@ def bridges(ct, ci, logFile=None):
 
     outInfo('%d total pairings' % (n,), outh)
 
+    outInfo('%d pairings in pool' % (len(pool),), outh)
+
     try:
         outh.close()
     except:
@@ -153,11 +171,13 @@ def bridges(ct, ci, logFile=None):
 def arguments():
     parser = argparse.ArgumentParser(description='Bridge count, SYNBIOCHEM, 2018')
     parser.add_argument('doe', 
-                        help='DoE file with ICE numbers')
+                        help='DoE +file with ICE numbers')
     parser.add_argument('info', 
                         help='Info about factors')
     parser.add_argument('-outFile', 
                         help='Output file')
+    parser.add_argument('-poolFile', action='store_false',
+                        help='Add a pool file of exisiting oligos')
     parser.add_argument('-logFile', 
                         help='Log file')
     return parser
@@ -185,6 +205,14 @@ def run_bro(args=None):
                     h.write( '\t'.join( (x[0], x[1], '_'.join(x)) )+'\n' )
         except:
             print( 'Error' )
+    if arg.poolFile:
+        try:
+            with open(arg.outFile+'2', 'w') as h:
+                for x in sorted(pool):
+                    h.write( '\t'.join( (x[0], x[1], '_'.join(x)) )+'\n' )
+        except:
+            print( 'Pool error' )
+                
                 
     
 

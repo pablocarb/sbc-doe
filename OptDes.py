@@ -191,7 +191,7 @@ def JMPExample():
     print( Deff( DD ) )
     # 38.66
     # Compute D-efficiency (correct)
-    print( Deff2( EE, factors) )
+    print( Deff2( EE, fac) )
     # D Efficiency	 87.98414
     return fac, DD, EE
 
@@ -461,15 +461,16 @@ def crossover2(A,B):
         A[i] = np.append(y1,x2)
         B[i] = np.append(x1,y2)
 
-def mutation2(A, th=1.0):
-    i = np.random.randint(A.shape[0])
-    j = np.random.randint(A.shape[1])
+def mutation2(A, candidates, th=1.0):
+    """ Mutation consists on replacing a run
+    with one from the set of candidates """
     epsilon = np.random.normal()
     if epsilon > th:
-        levels = np.unique(A[:,j])
-        A[i,j] = levels[ np.random.randint(len(levels)) ]
+        i = np.random.randint(A.shape[0])
+        j = np.random.randint(len(candidates))
+        A[i,:] = candidates[j][i,:] 
         
-def reproduction2(A,B):
+def reproduction2old(A,B):
     A = A.copy()
     B = B.copy()
     for i in np.arange(100):
@@ -481,6 +482,25 @@ def reproduction2(A,B):
             crossover2(A,B)
     C = blending2(A,B)
     return C
+
+def reproduction2(population):
+    """ Ranked candidates """
+    pairs = []
+    for i in np.arange(10):
+        pairs.append( (population[0].copy(), population[i+1].copy()) )
+    offsprings = []
+    for p in pairs:
+        A = p[0]
+        B = p[1]
+        # Crossover for multilevel numerical factors won't work
+        for i in np.arange(5):
+           if np.random.randint(100) > 50:
+                crossover2(A,B)
+        C = blending2(A,B)
+        for i in np.arange(100):
+            mutation2(C, population[0:10])
+        offsprings.append( C )
+    return offsprings
   
     
 def GenAlg2( factors, n, nPop=100, it=10, th=99.5 ):
@@ -515,20 +535,8 @@ def GenAlg2( factors, n, nPop=100, it=10, th=99.5 ):
             return population[elite]
         population = population[effi[0:nPop]]
         eff = eff[effi[0:nPop]]
-#        population = np
-        # 3. Random pairing
-#        w = np.arange(1, len(eff)-1)
-#        np.random.shuffle( eff[w] )
-        pairs = []
-  #      for i in np.arange(len(w), step=2):
-        for a in np.arange(10):
-            for b in np.arange(10):
-                if a != b:
-                    for k in np.arange(10):
-                        pairs.append( (population[a], population[b]) )
-        for p in pairs:
-            offspring = reproduction2(p[0],p[1])
-            population = np.insert(population,-1,offspring, axis=0)
+        offsprings = reproduction2(population)         
+        population = np.insert(population,-1,offsprings, axis=0)
 #%%    
 
 # Precompute the hypercube grids

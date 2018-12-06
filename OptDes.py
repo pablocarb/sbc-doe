@@ -12,6 +12,7 @@ Created on Tue Nov 27 16:01:46 2018
 @author: pablo
 """
 import numpy as np
+import pandas as pd
 import itertools
 
 def Deff(X):
@@ -71,6 +72,55 @@ def mapFactors( factors, M ):
             Mn = np.hstack( [Mn, Vn])
     return Mn
 
+
+def MapExp( E ):
+    """ Read a design, transform into X matrix """
+    # Define factors in the same way as for the library
+    factors = [ set(np.unique(E[:,i])) for i in np.arange(E.shape[1])]
+    EE = np.transpose( np.array([ list(np.unique(E[:,i], return_inverse=True)[1]) for i in np.arange(E.shape[1])] ) )
+    M = mapFactors( factors, EE )
+    return M, factors
+
+def MapDesign(factors, X):
+    M = []
+    for i in np.arange(X.shape[0]):
+        row = []
+        # skip intercept
+        j = 1
+        for fa in factors:
+            levels = sorted(fa)
+            # If none is set
+            level = levels[-1]
+            for l in levels[0:-1]:
+                if X[i,j] == 1:
+                    level = l
+                j += 1
+            row.append(level)
+        M.append( row )
+    return np.array( M )
+    
+def JMPExample():
+    """ This is a JMP example where they claim to achieve """
+    # Design Evaluation
+    # Design Diagnostics
+    # D Optimal Design	
+    # D Efficiency	 87.98414
+    # G Efficiency	 64.62616
+    # A Efficiency	 76.00696
+    # Average Variance of Prediction 1.229865
+    # Design Creation Time (seconds) 11
+    # Read design
+    E = pd.read_excel('/mnt/SBC1/data/OptimalDesign/data/CD2.xlsx')
+    D = np.array(E.iloc[:,0:8])
+    # Map into a binary matrix 
+    DD, fac = MapExp(D)
+    # Compute D-efficiency
+    print( Deff( DD ) )
+    # 38.66
+    return fac
+
+    
+    
 #%%
 
 def fullFactorial( factors ):
@@ -105,9 +155,8 @@ def DetMax( factors, n, m, it=1000, th=99.5, k=1 ):
     
     # Initial design: could we do something better than a purely random start?   
     M = randExp( factors, n )
-    # Map factors into [-1,1] and convert chategorical
+    # Map factors into [-1,1] and convert categorical
     X = mapFactors( factors, M )
-
     # D-Efficiency of the initial design
     J = Deff(X)
     print(J)
@@ -126,7 +175,7 @@ def DetMax( factors, n, m, it=1000, th=99.5, k=1 ):
         w += 1
         # Remove the experiments with the lowest delta
         Xsub = None
-        dList = np.argsort( sub )[0:(k-1)]
+        dList = np.argsort( sub )[0:(k+1)]
         for i in np.arange(X.shape[0]):
             if i in dList:
                 continue
@@ -144,7 +193,7 @@ def DetMax( factors, n, m, it=1000, th=99.5, k=1 ):
         Xn = Xsub
         for j in aList:
             Xn = np.vstack( [Xn, X1[j,:] ] )
-        # Make the update id the resulting design increases the objective
+        # Make the update if the resulting design increases the objective
         if w % 10 == 0:
             print(w,J,i,j, Dopt(X), Dopt(Xsub), Dopt(Xn))
         if Dopt(Xn) > Dopt(X):
@@ -186,35 +235,41 @@ def mutation(A, th=2.0):
 def reproduction(A,B):
     A = A.copy()
     B = B.copy()
-    for i in np.arange(10):
-        if np.random.randint(100) > 85:
+    for i in np.arange(100):
+        if np.random.randint(100) > 95:
             mutation(A)
-        if np.random.randint(100) > 85:
+        if np.random.randint(100) > 95:
             mutation(B)
     # Crossover for multilevel numerical factors won't work
-#    for i in np.arange(10):
-#        if np.random.randint(100) > 50:
-#            crossover(A,B)
+    for i in np.arange(10):
+       if np.random.randint(100) > 80:
+            crossover(A,B)
     C = blending(A,B)
     return C
     
     
-def GenAlg( factors, n, m, nPop=100, it=10, th=99.5, k=1 ):
+def GenAlg( factors, n, m, nPop=100, it=10, th=99.5, k=1, func=Dopt):
     # Using genetic algorithms
     # Based on Using a Genetic Algorithm to Generate Doptimal Designs for Mixture Experiments
     # 1. Generate an initial population of random designs
+    # Take the best ones
     population = []
-    for i in np.arange(nPop):
+    for i in np.arange(nPop*100):
         M = randExp( factors, n )
         X = mapFactors( factors, M )
         population.append( X )
     population = np.array(population)
+    eff = []
+    for j in np.arange(nPop):
+        eff = np.append( eff, func(population[j]) )
+    effi = np.flip( np.argsort(eff), axis=0)
+    population = population[effi[0:nPop]]
     # 2. Calculate score for each member of the population
     # and select elite chromosome
     for i in np.arange(it+1):
         eff = np.array( [] )
         for j in np.arange(nPop):
-            eff = np.append( eff, Dopt(population[j]) )
+            eff = np.append( eff, func(population[j]) )
         effi = np.flip( np.argsort(eff), axis=0)
         elite = effi[0]
         print(i,Deff(population[elite]))
@@ -224,11 +279,15 @@ def GenAlg( factors, n, m, nPop=100, it=10, th=99.5, k=1 ):
         eff = eff[effi[0:nPop]]
 #        population = np
         # 3. Random pairing
-        w = np.arange(1, len(eff)-1)
-        np.random.shuffle( eff[w] )
+#        w = np.arange(1, len(eff)-1)
+#        np.random.shuffle( eff[w] )
         pairs = []
-        for i in np.arange(len(w), step=2):
-            pairs.append( (population[i], population[i+1]) )
+  #      for i in np.arange(len(w), step=2):
+        for i in np.arange(50):
+            a = np.random.randint(50)
+            b = np.random.randint(20)
+            if a != b:
+                pairs.append( (population[a], population[b]) )
         for p in pairs:
             offspring = reproduction(p[0],p[1])
             population = np.insert(population,-1,offspring, axis=0)
@@ -254,8 +313,10 @@ factors = [
    {'Red', 'Green', 'Blue' ,'prom1', 'prom2', 'prom3', 'prom4'}, 
    {'prom1', 'prom2', 'prom3', 'prom4'} ]
 
+factors = JMPExample()
 
-X = DetMax(factors, n, m, it=100)
+X = DetMax(factors, n, m, it=1000, k=2)
 
+#X = GenAlg(factors, n, m=20, it=100, func=Dopt)
 
 

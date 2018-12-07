@@ -697,6 +697,29 @@ def readJMP(jmp):
     design.append(doejmp)
     return design
 
+def readOptDes(optf):
+    header = None
+    design = []
+    doejmp = {'design': {}}
+    for row in csv.reader(open(optf), quotechar='"'):
+        if header is None:
+            header = row
+            continue
+        for i in range(0, len(header)):
+            if len(row[i]) == 0:
+                continue
+            fact = header[i]
+            if fact not in doejmp['design']:
+                doejmp['design'][fact] = []
+            try:
+                val = int(row[i])
+            except:
+                val = int( re.sub('^L', '', row[i]) )
+            doejmp['design'][fact].append( val )
+    design.append(doejmp)
+    return design
+
+
 # def cleanDesign( doej, ct ):
 #     """ For cases with empty genes, we can have cases where there are unnecessary promoters"""
 #     """ Reduce to a single promoter """
@@ -803,6 +826,8 @@ def arguments():
                         help='Project description')
     parser.add_argument('-j', 
                         help='DoE from JMP')
+    parser.add_argument('-optDes', 
+                        help='DoE from OptDes')
     parser.add_argument('-w', action='store_true',
                         help='DoE from json (web version)')
     parser.add_argument('-G', 
@@ -934,15 +959,29 @@ def run_doe(args=None):
         dinfo = " Factors: %d; Levels: %d; Positional: %d [Full permutations]" % (len(factors), np.prod(nlevels), len(npos))
     print('SBC-DoE; '+dinfo)
     finfow.write(dinfo+'\n')
-    if arg.j is not None: # Custom design (column separated) or Factorial design using JMP
-        if not path.exists(arg.j):
-            arg.j = path.join(outfolder, arg.j)
-        if not path.exists(arg.j):
-            raise Exception('DoE file not found')
-        jmp = arg.j
-        doeJMP = readJMP(jmp)
-        for i in range(0, len(doeJMP)):
-            doeJMP[i], ct, rid = addMultiGenes( doeJMP[i], ct, rid )
+    if arg.j is not None or arg.optDes is not None: # Custom design (column separated)
+        if arg.j is not None:
+            if not path.exists(arg.j):
+                arg.j = path.join(outfolder, arg.j)
+            if not path.exists(arg.j):
+                raise Exception('DoE file not found')
+            jmp = arg.j
+            doeJMP = readJMP(jmp)
+        else:
+            if not path.exists(arg.optDes):
+                arg.optDes = path.join(outfolder, arg.optDes)
+            if not path.exists(arg.optDes):
+                raise Exception('DoE file not found')
+            doeJMP = readOptDes(arg.optDes)
+    # if arg.j is not None: # Custom design (column separated) or Factorial design using JMP
+    #     if not path.exists(arg.j):
+    #         arg.j = path.join(outfolder, arg.j)
+    #     if not path.exists(arg.j):
+    #         raise Exception('DoE file not found')
+    #     jmp = arg.j
+    #     doeJMP = readJMP(jmp)
+    #     for i in range(0, len(doeJMP)):
+    #         doeJMP[i], ct, rid = addMultiGenes( doeJMP[i], ct, rid )
 #            doeJMP[i] = cleanDesign( doeJMP[i], ct )
         # This is a legacy loop, there should be a single JMP design
         for des in range(0, len(doeJMP)):

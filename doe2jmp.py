@@ -12,6 +12,7 @@ from doepy import read_excel
 import OptDes
 import argparse
 import os, re, sys
+import csv
 import numpy as np
 import pandas as pd
 
@@ -232,7 +233,7 @@ if __name__ == '__main__':
          M, J = OptDes.CoordExch(factors, n=int(arg.libSize), runs=2)
          M1 = OptDes.MapDesign2(factors, M)
          df = pd.DataFrame(M1, columns=fnames)
-         df.to_csv(outfile, index=False)
+         df.to_csv(outfile, index=False, quoting=csv.QUOTE_NONE)
     else:
         name = re.sub( '\.[^.]+$', '', os.path.basename(arg.inputFile) )
         outnametable = name+'_table.jsl'

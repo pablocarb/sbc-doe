@@ -29,20 +29,30 @@ git clone https://github.com/pablocarb/viscad
 
 1. Define design specifications in Excel sheet (see templates).
 
-2. Use JMP for the statistical design (optional).
+2A. Use JMP for the statistical design (optional).
 
-  2.1. Generate JMP scripts:
+  2A.1. Generate JMP scripts:
 
   ```bash
   python doe2jmp.py inputSpecifications librarySize -x seed -r -e -t
   ```
 
-  2.2. Compute DoE in JMP.
+  2A.2. Compute DoE in JMP.
+
+2B. Use Optimal Designer:
+ 
+ 2B.1 Generate the design:
+
+ ```bash
+ python doe2jmp.py inputSpecifiactions librarySize -r -e -t -inHouse
+ ```
+ *To do*: add seed.
 
 3. Generate the design:
 
 ```bash
 python doepy.py inputSpecifications name -o -b -r -V -j jmpDesign -v "Title" -bro
+python doepy.py inputSpecifications name -o -b -r -V -optDes optdesDesign -v "Title" -bro
 ```
 
 Current internal designs:
@@ -56,7 +66,7 @@ Current internal designs:
 
 ```
 usage: doepy.py [-h] [-p] [-s S] [-i] [-r] [-o] [-x [X]] [-O O] [-b] [-g] [-V]
-                [-c] [-v V] [-j J] [-w] [-G G] [-k] [-nolab] [-blankPromoter]
+                [-c] [-v V] [-j J] [-optDes of] [-w] [-G G] [-k] [-nolab] [-blankPromoter]
                 [-bro]
                 f id
 
@@ -82,6 +92,7 @@ optional arguments:
   -c              Generate construct fasta files
   -v V            Project description
   -j J            DoE from JMP
+  -optDes of            DoE from Optimal Designer
   -w              DoE from json (web version)
   -G G            Regenerate pigeon from file and exit
   -k              Keep pigeon files

@@ -58,6 +58,8 @@ def randExp( factors, n ):
 
 #%%
     
+
+
 def grid(n, weighted=True):
     """ Provide normalized vectors of n-1 dummy variables 
     Useful for computing the model matrix (X) to 
@@ -77,6 +79,12 @@ def grid(n, weighted=True):
     if weighted:
         W = W*np.sqrt(n-1)
     return W
+
+# Precompute the hypercube grids
+gridList = {}
+for i in np.arange(2,20):
+    gridList[i] = grid(i)
+
 
 #%%
 
@@ -191,7 +199,7 @@ def JMPExample():
     print( Deff( DD ) )
     # 38.66
     # Compute D-efficiency (correct)
-    print( Deff2( EE, factors) )
+    print( Deff2( EE, fac) )
     # D Efficiency	 87.98414
     return fac, DD, EE
 
@@ -280,6 +288,59 @@ def DetMax( factors, n, m, it=1000, th=99.5, k=1 ):
     print(w,J)
     return X
 
+
+
+def CoordExch1( factors, n, verb=True, obj=Dopt ): # Deff2
+    
+    # Start with an already sub-optimized design by DetMax
+    # (it does not make too mauch difference)
+    M = DetMax2( factors, n, 100 )
+#    M = randExp( factors, n )
+    # D-Efficiency of the initial design
+    J = 0
+    Jn = Dopt2(M, factors)
+    q = M.shape[0]
+    while J < Jn:
+        J = Jn
+        X = mapFactors2( M, factors ) 
+        # Calcualte delta of removing an experiment
+        sub = []
+        for i in np.arange(X.shape[0]):
+            sub.append( VarAdd(X, X[i,:]) )
+        dList = np.argsort( sub )
+#        for i in np.arange( M.shape[0] ):
+        for i in dList[0:q]:
+            for j in np.arange( M.shape[1] ):
+                Js = []
+                for k in np.arange( len(factors[j]) ):
+                    M[i,j] = k
+                    Jk = Dopt2(M, factors)
+                    if np.isnan( Jk ):
+                        Jk = 0
+                    Js.append( Jk )
+                M[i,j] = np.argmax( Js )
+        Jn = Dopt2( M, factors )
+        if q > 0.2*M.shape[0]:
+            q = q-1 
+    eff =  Deff2(M, factors)
+    if verb:
+        
+        print( Deff2(M, factors) )
+    return M, eff
+
+
+
+
+def CoordExch( factors, n, runs=10, verb=True ):
+    M = None
+    J = 0
+    for i in np.arange( runs ):
+        Mn, Jn = CoordExch1(factors,n)   
+        if Jn > J:
+            M = Mn
+            J = Jn
+    return M, J
+    
 def DetMax2( factors, n, m, it=1000, th=99.5, k=1, verb=False ):
     # n: Number of runs
     # m: sampled design space per iteration
@@ -531,48 +592,49 @@ def GenAlg2( factors, n, nPop=100, it=10, th=99.5 ):
             population = np.insert(population,-1,offspring, axis=0)
 #%%    
 
-# Precompute the hypercube grids
-gridList = {}
-for i in np.arange(2,20):
-    gridList[i] = grid(i)
+if __name__ == '__main__':
+        
+    n = 46 # Number of runs
+    m = 100 # Sampled design space per iteration
     
-n = 46 # Number of runs
-m = 100 # Sampled design space per iteration
-
-factors = [ [0,1,2,3,4], 
-           [123,53,345],#[0,1], [0,1], [0,1]]
-   {'Red', 'Green', 'Blue'}, 
-   {'prom1', 'prom2', 'prom3', 'prom4'} ]
-
-factors = [
-   {'Red', 'Green', 'Blue'}, 
-   {'prom1', 'prom2', 'prom3', 'prom4','prom1', 'prom2', 'prom3', 'prom4'},
-   {'Red', 'Green', 'Blue' ,'prom1', 'prom2', 'prom3', 'prom4'}, 
-   {'Red', 'Green', 'Blue' ,'prom1', 'prom2', 'prom3', 'prom4'}, 
-   {'Red', 'Green', 'Blue' ,'prom1', 'prom2', 'prom3', 'prom4'}, 
-   {'Red', 'Green', 'Blue' ,'prom1', 'prom2', 'prom3', 'prom4'}, 
-   {'Red', 'Green', 'Blue' ,'prom1', 'prom2', 'prom3', 'prom4'}, 
-   {'prom1', 'prom2', 'prom3', 'prom4'} ]
-
-factors,DD, EE = JMPExample()
-
-#X = DetMax(factors, n, m, it=1000, k=2)
-
-
-#M = DetMax2(factors, n, m, it=100, k=2)
-
-best = 0
-while best < 100:
-#    M = DetMax2(factors, n, m=100, it=10, k=2)
-    M = GenAlg2(factors, n=46, it=10)
-    de = Deff2(M, factors)
+    factors = [ [0,1,2,3,4], 
+               [123,53,345],#[0,1], [0,1], [0,1]]
+       {'Red', 'Green', 'Blue'}, 
+       {'prom1', 'prom2', 'prom3', 'prom4'} ]
     
-    if de > best:
-        best= de
-        print(best)
-
-
-#X = GenAlg(factors, n, m=20, it=100, func=Dopt)
-
-#X = GenAlg2(factors, n=46, it=100)
-
+    factors = [
+       {'Red', 'Green', 'Blue'}, 
+       {'prom1', 'prom2', 'prom3', 'prom4','prom1', 'prom2', 'prom3', 'prom4'},
+       {'Red', 'Green', 'Blue' ,'prom1', 'prom2', 'prom3', 'prom4'}, 
+       {'Red', 'Green', 'Blue' ,'prom1', 'prom2', 'prom3', 'prom4'}, 
+       {'Red', 'Green', 'Blue' ,'prom1', 'prom2', 'prom3', 'prom4'}, 
+       {'Red', 'Green', 'Blue' ,'prom1', 'prom2', 'prom3', 'prom4'}, 
+       {'Red', 'Green', 'Blue' ,'prom1', 'prom2', 'prom3', 'prom4'}, 
+       {'prom1', 'prom2', 'prom3', 'prom4'} ]
+    
+    factors,DD, EE = JMPExample()
+    
+    
+    M , J = CoordExch(factors, n, runs=10)
+   # M = GenAlg2(factors, n=46, it=10, nPop=5)
+    
+    #X = DetMax(factors, n, m, it=1000, k=2)
+    
+    
+    #M = DetMax2(factors, n, m, it=100, k=2)
+    
+    #best = 0
+    #while best < 100:
+    ##    M = DetMax2(factors, n, m=100, it=10, k=2)
+    #    M = GenAlg2(factors, n=46, it=10)
+    #    de = Deff2(M, factors)
+    #    
+    #    if de > best:
+    #        best= de
+    #        print(best)
+    #
+    
+    #X = GenAlg(factors, n, m=20, it=100, func=Dopt)
+    
+    #X = GenAlg2(factors, n=46, it=100)
+    

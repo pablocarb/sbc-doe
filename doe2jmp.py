@@ -9,9 +9,47 @@ To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 @description: Prepare files for JMP from the DoE sheet
 '''
 from doepy import read_excel
+import OptDes
 import argparse
 import os, re, sys
 import numpy as np
+import pandas as pd
+
+def makeDoeOptDes(fact, outfile, size, seed=None, starts=1040, makeFullFactorial=False):
+    """ Full DoE script """
+    # To Do: full factorial
+    
+    factors = []
+    fnames = []
+    npos = 0
+    nfact = 0
+    for pos in sorted(fact):
+        name = fact[pos]['component']+str(pos)
+        if len(fact[pos]['levels']) > 1:
+            nfact += 1
+            # Define as discrete no-empty factors (origin and non-empty promoters at least we need one!)
+            # Genes are in principle excluded
+            if fact[pos]['component'] != 'gene' and '-' not in fact[pos]['levels']:
+                varType = 'Discrete Numeric'
+                theLevels = [ x for x in range(1, len(fact[pos]['levels'])+1 ) ]
+                factors.append( theLevels ) 
+                fnames.append(name)
+            else:
+                varType = 'Categorical'
+                theLevels = [ '"L{}"'.format(x) for x in range(1, len(fact[pos]['levels'])+1 ) ]
+                factors.append(set(theLevels))
+                fnames.append(name)
+        if fact[pos]['positional'] is not None:
+            npos += 1
+    if npos >  1:
+        # Total possible arrangements in orthogonal latin squares
+        varType = 'Categorical'
+        theLevels = ['"L{}"'.format(x) for x in range(1, npos*(npos-1)+1)]
+        factors.append( set( theLevels ) )
+        fnames.append('pos')
+        nfact += 1
+    return factors, fnames
+
 
 def makeDoeScript(fact, outfile, size, seed=None, starts=1040, executable=False, makeTable=False, makeFullFactorial=False):
     """ Full Doe Script in JMP """
@@ -168,33 +206,55 @@ def arguments():
                         help='Make and save the table')
     parser.add_argument('-f', action='store_true',
                         help='Full factorial design')
+    parser.add_argument('-inHouse', action='store_true',
+                        help='In-house (experimental)')
     return parser
 
 if __name__ == '__main__':
     parser = arguments()
     arg = parser.parse_args()
     fact, seql, partinfo = read_excel( arg.inputFile )
-    name = re.sub( '\.[^.]+$', '', os.path.basename(arg.inputFile) )
-    outnametable = name+'_table.jsl'
-    outname = name+'.jsl'
-    logname = name+'.log'
-    if arg.O is not None:
-        if not os.path.exists( arg.O ):
-            os.mkdir( arg.O )
-        outdir = arg.O
+    if arg.inHouse:
+         name = re.sub( '\.[^.]+$', '', os.path.basename(arg.inputFile) )
+         if arg.O is not None:
+            if not os.path.exists( arg.O ):
+                os.mkdir( arg.O )
+            outdir = arg.O
+         else:
+            outdir = os.path.dirname(arg.inputFile)
+        
+         outfile = os.path.join( outdir,name+'.optdes' )
+         if arg.o:
+             outfile = arg.o
+         if os.path.exists( outfile ) and not arg.r:
+             raise Exception('File exists!')
+         factors, fnames = makeDoeOptDes(fact, outfile, size=arg.libSize, seed=arg.x, starts=arg.n, makeFullFactorial=False)
+         M, J = OptDes.CoordExch(factors, n=int(arg.libSize), runs=2)
+         M1 = OptDes.MapDesign2(factors, M)
+         df = pd.DataFrame(M1, columns=fnames)
+         df.to_csv(outfile, index=False)
     else:
-        outdir = os.path.dirname(arg.inputFile)
-    outfile = os.path.join( outdir, outnametable )
-    if arg.o:
-        outfile = arg.o
-    if os.path.exists( outfile ) and not arg.r:
-        raise Exception('File exists!')
-    makeTableScript( name, fact, outfile )
-    outfile = os.path.join( outdir, outname )
-    if os.path.exists( outfile ) and not arg.r:
-        raise Exception('File exists!')
-    outfile = makeDoeScript( fact, outfile, size=arg.libSize, seed=arg.x, starts=arg.n, executable=arg.e, makeTable=arg.t, makeFullFactorial=arg.f )
-    logfile = os.path.join( outdir, logname)
-    with open(logfile, 'w') as handler:
-        handler.write( ' '.join(['"{}"'.format(x) for x in sys.argv])+'\n' )
-    print(outfile)
+        name = re.sub( '\.[^.]+$', '', os.path.basename(arg.inputFile) )
+        outnametable = name+'_table.jsl'
+        outname = name+'.jsl'
+        logname = name+'.log'
+        if arg.O is not None:
+            if not os.path.exists( arg.O ):
+                os.mkdir( arg.O )
+            outdir = arg.O
+        else:
+            outdir = os.path.dirname(arg.inputFile)
+        outfile = os.path.join( outdir, outnametable )
+        if arg.o:
+            outfile = arg.o
+        if os.path.exists( outfile ) and not arg.r:
+            raise Exception('File exists!')
+        makeTableScript( name, fact, outfile )
+        outfile = os.path.join( outdir, outname )
+        if os.path.exists( outfile ) and not arg.r:
+            raise Exception('File exists!')
+        outfile = makeDoeScript( fact, outfile, size=arg.libSize, seed=arg.x, starts=arg.n, executable=arg.e, makeTable=arg.t, makeFullFactorial=arg.f )
+        logfile = os.path.join( outdir, logname)
+        with open(logfile, 'w') as handler:
+            handler.write( ' '.join(['"{}"'.format(x) for x in sys.argv])+'\n' )
+        print(outfile)

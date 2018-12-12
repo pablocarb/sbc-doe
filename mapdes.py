@@ -7,6 +7,7 @@ To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 
 @author:  Pablo Carbonell
 @description: Map design of experiments to SYNBIOCHEM registered designs by querying ICE
+ This is only a test about IDs, multiple results can be output by ICE.
 '''
 import os, re, argparse, csv
 from synbiochem.utils import ice_utils

@@ -13,7 +13,7 @@ Created on Tue Nov 27 16:01:46 2018
 """
 import numpy as np
 import pandas as pd
-import itertools
+import itertools, re
 
 def Deff(X):
     # D-efficiency
@@ -180,7 +180,7 @@ def MapDesign2(factors, M):
     return np.array( N )
 
 
-def JMPExample():
+def JMPRead(jmpfile):
     """ This is a JMP example: """
     # Design Evaluation
     # Design Diagnostics
@@ -191,8 +191,11 @@ def JMPExample():
     # Average Variance of Prediction 1.229865
     # Design Creation Time (seconds) 11
     # Read design
-    E = pd.read_excel('/mnt/SBC1/data/OptimalDesign/data/CD2.xlsx')
-    D = np.array(E.iloc[:,0:8])
+    if re.search(jmpfile, 'xlsx$'):
+        E = pd.read_excel(jmpfile)
+    else:
+        E = pd.read_csv(jmpfile)
+    D = np.array(E.iloc[:,0:-1])
     # Map into a binary matrix 
     DD, fac, EE = MapExp(D)
     # Compute D-efficiency (wrong use of categorical factors)
@@ -620,7 +623,7 @@ if __name__ == '__main__':
        {'Red', 'Green', 'Blue' ,'prom1', 'prom2', 'prom3', 'prom4'}, 
        {'prom1', 'prom2', 'prom3', 'prom4'} ]
     
-    factors,DD, EE = JMPExample()
+    factors,DD, EE = JMPRead('/mnt/SBC1/data/OptimalDesign/data/CD2.xlsx')
     
     
     M , J = CoordExch(factors, n, runs=10)

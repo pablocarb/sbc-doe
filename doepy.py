@@ -15,11 +15,13 @@ import argparse
 from datetime import datetime
 import numpy as np
 import pandas as pd
+import brOrligos
 import sys
 import csv
 import json
 import random
 from viscad import viscad
+from mapFactors import mapFolder
 import brOrligos
 import rpy2
 import rpy2.robjects as robjects
@@ -71,8 +73,6 @@ def convert_construct(xct, AddBlankPromoter=False):
                         lev = None
                     ll.append(lev)
                 xct[p]['levels'] = ll
-    multilevel = {}
-    pairedFactor = {}
     for p in sorted(xct):
         levels = xct[p]['levels']
         comp = xct[p]['component']
@@ -90,44 +90,18 @@ def convert_construct(xct, AddBlankPromoter=False):
         pos = xct[p]['positional']
         if pos is None:
             pos = 0
-        cid = str(comp)+str(p)
+        cid = str(xct[p]['component'])+str(p)
         i = 1
         if AddBlankPromoter and \
            comp == 'promoter' and \
            len(levels) > len([i for i in filter( lambda h: h is None, levels)]):
             rid[cid+'_'+str(i)] = None
             i += 1
-        if cid not in multilevel:
-            multilevel[cid] = []
-        if cid not in pairedFactor:
-            pairedFactor[cid] = None
         for x in range(0, len(levels)):
-            val = levels[x]
-            valid = cid+'_'+str(i)
-            # In case that some ids were already declared
-            while valid in rid:
+#            if levels[x] is not None:
+                rid[cid+'_'+str(i)] = levels[x]
                 i += 1
-                valid = cid+'_'+str(i)
-            rid[valid] = val
-            # This is a little bit involved.
-            # It should work as long as multigenes are added to higher secondary positions
-            # as they are declared for the first time 
-            try:
-                multigene = xct[p]['multigene']
-                if val in multigene:
-                    for mg in multigene[val]:
-                        mgpos, mgid = mg
-                        mcid = str(comp)+str(mgpos)
-                        valid = mcid+'_'+str(i)
-                        rid[valid] = mgid
-                        if mcid not in multilevel:
-                            multilevel[mcid] = []
-                        multilevel[mcid].append( valid )
-                        pairedFactor[mcid] = cid
-            except:
-                pass
-            i += 1
-        ct.append((cid, len(levels)+len(multilevel[cid]), pos, 0, deg, pairedFactor[cid]))
+        ct.append((cid, len(levels), pos, 0, deg))
     return ct, rid
 
 # Transitional function to map old ids to new ICE ids
@@ -161,7 +135,6 @@ def read_excel(e, s=1):
     offset = 1
     fcol = 0
     r = 0
-    multiGene = {}
     while fcol is not None:
         r += 1
         fcol = None
@@ -171,29 +144,10 @@ def read_excel(e, s=1):
             positional = df.iloc[r-1, offset]
             component = str( df.iloc[r-1, offset+1] )
             part = str( df.iloc[r-1, offset+2] )
-            partType =  str( df.iloc[r-1, offset+3] )
             if positional != positional:
                 positional = None
         except:
             continue
-        
-        dependentFactor = False
-        if component == 'gene':
-            if len( partType.split(' ') ) > 1:
-                if partType in multiGene:
-                    # Multi-gene enzyme, add the information to the associated factor
-                    dependentFactor = True
-                    mfactor, mpart = multiGene[partType]
-                    mgene = fact[mfactor]['multigene']
-                    if mpart not in mgene:
-                        mgene[mpart]= [ (factor, part) ]
-                    else:
-                        mgene[mpart].append( (factor, part) )
-#                    continue
-                else:
-                    multiGene[partType] = (factor, part)
-
-        # Legacy code, probably not useful
         if part is None:
             if factor in fact:
                 i = len(fact[factor]['levels'])+1
@@ -206,19 +160,15 @@ def read_excel(e, s=1):
                 mid = map_oldid()
             part = mid[part]
             seql[part] = None 
-        if part == 'blank':
-            part = None
-
         if factor not in fact:
             fact[factor] = {'positional': positional,
                             'component': component,
                             'levels': [],
-                            'sequence': seql[part],
-                            'multigene': {}
+                            'sequence': seql[part]
             }
-        # add only as an independent level if it is not part of a previous multigene 
-        if not dependentFactor:
-            fact[factor]['levels'].append(part)
+        if part == 'blank':
+            part = None
+        fact[factor]['levels'].append(part)
     return fact, seql, partinfo
 
 def compact_factors(fact):
@@ -392,19 +342,20 @@ def getsbcid(name, description, designid=None):
     """ Try to get design number if possible, otherwise keep the full label """
     """ Do not register in ICE, this is perfomed downstream in the pipeline """
     global ID_COUNTER
-#    try:
-#        desn = "DE%02d" % ( int( re.sub('^DE', '', re.sub('^.*SBC', '', designid) )), )
-#    except:     
-    desn = designid
+    
+    try:
+        desn = "DE%02d" % (int(re.sub('^.*SBC', '', designid)),)
+    except:
+        desn = designid
                         
-    partid = "%s_PL%02d" % (desn,ID_COUNTER)
+    partid = "SBC_%s_PL%02d" % (desn,ID_COUNTER)
     ID_COUNTER = ID_COUNTER + 1
     return partid
 
 
 
 def save_design(design, ct, fname, lat, npos, rid = None, designid = None,
-                constructid = [], partinfo = [], project=None, WriteCsv=None, WriteMap=None):
+                constructid = [], partinfo = [], project=None, WriteCsv=None):
     ### Potentially the csv could be overwritten if multiple designs?
     ndes = {}
     n = 0
@@ -451,17 +402,12 @@ def save_design(design, ct, fname, lat, npos, rid = None, designid = None,
     of = open(fname, 'w')
     if WriteCsv is not None:
         cw = csv.writer(open(WriteCsv, 'w'), dialect='excel-tab' )
-    if WriteMap is not None:
-        mapw = csv.writer(open(WriteMap, 'w'))
     libr = []
     libscr = []
     for x in range(0, n):
-        partsList = []
+        ll = []
         screen = 1
-        prom = False
-        proml = []
-        for counter in range(0, len(ct)):
-            y = ct[counter]
+        for y in ct:
             fa = y[0]
             le = y[1]
             po = y[2]
@@ -472,46 +418,23 @@ def save_design(design, ct, fname, lat, npos, rid = None, designid = None,
                 if de > 1 or (le  == 1 and de > 0):
                     screen *= pl                        
             # Randomize permutations using a latin square
-            # If only found at one position, ignore the permutation flag
             faid = "%s_%d" % (fa, ndes[fa][x],)
-            if len(npos)> 1 and fa in npos:
+            if fa in npos:
                 perm = ndes['pos'][x]
                 fa = npos[lat[perm-1][npos.index(fa)]-1]
                 faid = "%s_%d" % (fa, ndes[fa][x],)
-            faid0 = faid
             if rid is not None:
                 faid = rid[faid]
-
-            if fa.startswith('promoter'):
-                proml.append(counter)
-
             if faid is None:
                 faid = ''
-            else:
-                # Keep track of last non-empty part to rule out two consecutive promoters
-                if fa.startswith('promoter'):
-                    if prom == True:
-                        faid = ''
-                    else:
-                        prom = True
-                else:
-                    prom = False
             if faid is not None:
-                partsList.append( ("%s" %  (faid,), faid0) )
-                
-        # Verify that we have a gene at the end
-        for z in range(len(ct)-1,0,-1):
-            if partsList[z][0] != '' and z not in proml:
-                break
-            elif z in proml:
-                partsList[z] = ('', partsList[z][1])
-        
+                ll.append("%s" %  (faid,))
+
         # Get the id
         if len(constructid) < x+1 :
             # Generate a meaningful name
             name = ''
-            for partEntry in partsList:
-                part = partEntry[0]
+            for part in ll:
                 if part != '':
                     if part in partinfo:
                         if name != '':
@@ -529,32 +452,26 @@ def save_design(design, ct, fname, lat, npos, rid = None, designid = None,
             if project is not None:
                 description += project+'; '
             description += 'Design: '+ designid+'; '
-            description += 'Construct: '+' '.join([i[0] for i in partsList])
+            description += 'Construct: '+' '.join(ll)
             constructid.append(getsbcid(name, description, designid=designid))
         # Save the construct
         if rid is None:
             of.write("%s\t" % (constructid[x],))
-            for part in partsList:
-                of.write("%s\t" % (part[0],))
+            for part in ll:
+                of.write("%s\t" % (part,))
         else:
             if WriteCsv is not None:
                 xx = []
                 xx.append(constructid[x])
-                for part in partsList:
-                    if len(part[0]) > 0:
-                        xx.append(part[0])
+                for part in ll:
+                    if len(part) > 0:
+                        xx.append(part)
                 cw.writerow(xx)
-            if WriteMap is not None:
-                xx = []
-                xx.append(constructid[x])
-                for part in partsList:
-                    xx.append(':'.join(part))
-                mapw.writerow(xx)
             of.write("%16s" % (constructid[x],))
-            for part in partsList:
-                of.write("%16s" % (part[0],))
+            for part in ll:
+                of.write("%16s" % (part,))
         of.write('\n')
-        libr.append([i[0] for i in partsList])
+        libr.append(ll)
         if screen > 1:
             screen *= 3 # if screening a pool, multiply by 3
         libscr.append(screen)
@@ -684,9 +601,6 @@ def readJMP(jmp):
             if len(row[i]) == 0:
                 continue
             fact = header[i]
-            # Skip for full factorial
-            if re.search('Pattern',fact):
-                continue
             if fact not in doejmp['design']:
                 doejmp['design'][fact] = []
             try:
@@ -696,93 +610,6 @@ def readJMP(jmp):
             doejmp['design'][fact].append( val )
     design.append(doejmp)
     return design
-
-def readOptDes(optf):
-    header = None
-    design = []
-    doejmp = {'design': {}}
-    for row in csv.reader(open(optf), quotechar='"'):
-        if header is None:
-            header = row
-            continue
-        for i in range(0, len(header)):
-            if len(row[i]) == 0:
-                continue
-            fact = header[i]
-            if fact not in doejmp['design']:
-                doejmp['design'][fact] = []
-            try:
-                val = int(row[i])
-            except:
-                val = int( re.sub('^L', '', row[i]) )
-            doejmp['design'][fact].append( val )
-    design.append(doejmp)
-    return design
-
-
-# def cleanDesign( doej, ct ):
-#     """ For cases with empty genes, we can have cases where there are unnecessary promoters"""
-#     """ Reduce to a single promoter """
-#     newct = []
-#     import pdb
-#     pdb.set_trace()
-#     for i in range(0, len(ct)):
-#         f = ct[i]
-#         # Current factor
-#         factor = f[0]
-#         import pdb
-#         pdb.set_trace()
-#         if factor.startswith('promoter'):
-#             # No consecutive promoters
-#             if prom:
-#                 continue
-#             prom = True
-#             # No promoter at the end
-#             if len(ct) == i+1:
-#                 break
-#         else:
-#             prom = False
-#         newct.append( f )
-#     return newct
-        
-        
-
-def addMultiGenes( doej, ct, rid ):
-    """ Update the design in order to take into account multigenes.
-        The information is updated based on ct """
-    newct = []
-    for f in ct:
-        # Current factor
-        factor = f[0]
-        # Paired factor
-        pair = f[5]
-        # Number of levels
-        nlev = f[1]
-        addEmpty = False
-        # Currently only work if this column is all dependent and therefore the design was empty
-        if pair is not None:
-            if factor in doej['design']:
-                raise "Mixing multigenes and independent gene pairs not yet implemented"
-            else:
-                # Copy the paired factor, but if there is no available level, add an empty level
-                doej['design'][factor] = []
-                for x in doej['design'][pair]:
-                    if x <= nlev:
-                        doej['design'][factor].append( x )
-                    else:
-                        addEmpty = True
-                        ncomp = factor+ '_'+ str(nlev+1)
-                        rid[ncomp] = None
-                        doej['design'][factor].append( nlev+1 )
-                        
-        # Redefine the factor with an additional empty level
-        if addEmpty:
-            f = list(f)
-            f[1] += 1
-            f = tuple(f)
-                    
-        newct.append( f )
-    return doej, newct, rid
 
 def doeconv(des):
     design = des[0]
@@ -826,8 +653,6 @@ def arguments():
                         help='Project description')
     parser.add_argument('-j', 
                         help='DoE from JMP')
-    parser.add_argument('-optDes', 
-                        help='DoE from OptDes')
     parser.add_argument('-w', action='store_true',
                         help='DoE from json (web version)')
     parser.add_argument('-G', 
@@ -840,6 +665,8 @@ def arguments():
                         help='Add blank promoter even if not explicitly given')
     parser.add_argument('-bro', action='store_true',
                         help='Add file with full list of bridging oligos')
+    parser.add_argument('-noMap', action='store_true',
+                        help='Do not generate factors file')
     return parser
 
 def command_line(parser, args=None):
@@ -959,37 +786,18 @@ def run_doe(args=None):
         dinfo = " Factors: %d; Levels: %d; Positional: %d [Full permutations]" % (len(factors), np.prod(nlevels), len(npos))
     print('SBC-DoE; '+dinfo)
     finfow.write(dinfo+'\n')
-    if arg.j is not None or arg.optDes is not None: # Custom design (column separated)
-        if arg.j is not None:
-            if not path.exists(arg.j):
-                arg.j = path.join(outfolder, arg.j)
-            if not path.exists(arg.j):
-                raise Exception('DoE file not found')
-            jmp = arg.j
-            doeJMP = readJMP(jmp)
-        else:
-            if not path.exists(arg.optDes):
-                arg.optDes = path.join(outfolder, arg.optDes)
-            if not path.exists(arg.optDes):
-                raise Exception('DoE file not found')
-            doeJMP = readOptDes(arg.optDes)
-    # if arg.j is not None: # Custom design (column separated) or Factorial design using JMP
-    #     if not path.exists(arg.j):
-    #         arg.j = path.join(outfolder, arg.j)
-    #     if not path.exists(arg.j):
-    #         raise Exception('DoE file not found')
-    #     jmp = arg.j
-    #     doeJMP = readJMP(jmp)
-    #     for i in range(0, len(doeJMP)):
-    #         doeJMP[i], ct, rid = addMultiGenes( doeJMP[i], ct, rid )
-#            doeJMP[i] = cleanDesign( doeJMP[i], ct )
-        # This is a legacy loop, there should be a single JMP design
+    if arg.j is not None: # Custom design (column separated)
+        if not path.exists(arg.j):
+            arg.j = path.join(outfolder, arg.j)
+        if not path.exists(arg.j):
+            raise Exception('DoE file not found')
+        jmp = arg.j
+        doeJMP = readJMP(jmp)
         for des in range(0, len(doeJMP)):
             if rid is not None:
                 fname0 = designid+'.ji'+str(des)
                 csvname = re.sub('\.[^.]*$', '.txt', fname0)
-                fmapname = re.sub('\.[^.]*$', '.jmap', fname0)
-                libr, libscr = save_design(doeJMP[des], ct, fname0, lat, npos, rid=rid, designid=desid, constructid=constructid, WriteCsv=csvname, WriteMap=fmapname)
+                libr, libscr = save_design(doeJMP[des], ct, fname0, lat, npos, rid=rid, designid=desid, constructid=constructid, WriteCsv=csvname)
             fname = designid+'.j'+str(des)
             libr, libscr = save_design(doeJMP[des],ct, fname, lat, npos, rid=None, designid=desid, constructid=constructid)
             if vars(arg)['i']:
@@ -1001,9 +809,8 @@ def run_doe(args=None):
             if cad:
                 pcad(fname, rid, clean=arg.k, nolabel=arg.nolab)
             if vcad:
-#                viscad.runViscad(args=[fname, '-i', fname0, '-l', logfile])
-                viscad.runViscad(args=[fmapname, '-l', logfile])
-    if arg.r: # Regular fractional factorial design using R
+                viscad.runViscad(args=[fname, '-i', csvname, '-l', logfile])
+    if arg.r: # Regular fractional factorial design
         # Trivial case, no need of calling planor package
         if len(factors) == 1:
             doe1 = [{'design': {factors[0]: range(1, nlevels[0]+1) } } ]
@@ -1060,17 +867,18 @@ def run_doe(args=None):
                 viscad.runViscad(args=[fnameo, '-i', fnameo, '-l', logfile, '-x', '_oa'])
     finfow.close()
     if arg.bro:
-        # Needs some improvemet: not valid for all cases
+        # Needs some improvement: not valid for all cases
         # Currently only implemented for custom designs (JMP)
         try:
             broFile = designid+'.bro'
-            try:
-                # improved version using the fmapname
-                brArgs = [fmapname, fname, '-outFile', broFile, '-logFile', broFile+'.log']
-            except:
-                brArgs = [csvname, fname, '-outFile', broFile, '-logFile', broFile+'.log']
+            brArgs = [csvname, fname, '-outFile', broFile, '-logFile', broFile+'.log']
             brOrligos.run_bro( brArgs )
             write_log(logfile, ['broligos'] + brArgs)
+        except:
+            pass
+    if not arg.noMap:
+        try:
+            mapFolder(outfolder)
         except:
             pass
     return outfolder, fname

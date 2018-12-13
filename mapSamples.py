@@ -10,14 +10,20 @@ To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 '''
 import os, re, argparse, csv
 import pandas as pd
+import numpy as np
+import statsmodels.formula.api as smf
 from synbiochem.utils import ice_utils
 
 def arguments():
     parser = argparse.ArgumentParser(description='MapSamples. Pablo Carbonell, SYNBIOCHEM, 2018')
     parser.add_argument('dts', 
-                        help='Data tracking sheet')
+                        help='Data tracking sheet folder')
     parser.add_argument('-outFile',  default=None,
                         help='Output file (default: dtsFolder/samples.csv)')
+    parser.add_argument('-outFolder',  default='/mnt/SBC1/data/Biomaterials/learn',
+                        help='Output folder ')
+    parser.add_argument('-iceEntries',  default=None,
+                        help='ICE entries file (instead of accessing client)')
     return parser
 
 def samples(dts, sheetName='Samples'):
@@ -27,31 +33,128 @@ def samples(dts, sheetName='Samples'):
         df = None
     return df
 
-def mapPlasmids(df, column='Strain ID', mapColumn='Plasmid Name'):
-    ids = set()
-    for x in df.loc[:,column]:
-        try:
-            iceid = int(x)
-            ids.add( iceid )
-        except:
-            continue
-    client = ice_utils.ICEClient("https://ice.synbiochem.co.uk",os.environ['ICE_USERNAME'], os.environ['ICE_PASSWORD'])
+def mapPlasmids(df, arg, column='Strain ID', mapColumn='Plasmid Name', iceurl="https://ice.synbiochem.co.uk"):
+    """ Map plasmids into their names in ICE, they should contain the DoE plasmid name """
     plmap = {}
-    for ice in ids:
-        try:
-            entry = client.get_ice_entry( ice )
-            name = entry.get_name()
-            plmap[ ice ] = name
-        except:
-            continue
+    if arg.iceEntries is not None and os.path.exists( arg.iceEntries ):
+        icedf = pd.read_csv( arg.iceEntries )
+        for i in icedf.index:
+            plmap[ icedf.loc[i,'Part ID'] ] = icedf.loc[i,'Name']
+    else:
+        ids = set()
+        for x in df.loc[:,column]:
+            try:
+                iceid = int(x)
+                ids.add( iceid )
+            except:
+                continue
+        client = ice_utils.ICEClient(iceurl,os.environ['ICE_USERNAME'], os.environ['ICE_PASSWORD'])
+        plmap = {}
+        for ice in ids:
+            try:
+                entry = client.get_ice_entry( ice )
+                name = entry.get_name()
+                sbcid = 'SBC'+"%06d" % (ice,)
+                plmap[ sbcid ] = name
+            except:
+                continue
+    print(df[column].unique())
     for i in range(0, df.shape[0]):
-        iceid = df.loc[i, column]
-        if iceid in plmap:
-            df.loc[i, mapColumn] = plmap[ iceid ]
+        try:
+            iceid = df.loc[i, column]
+            sbcid = 'SBC'+"%06d" % (iceid,)
+            if sbcid in plmap:
+                df.loc[i, mapColumn] = plmap[ sbcid ]
+        except:
+            df.loc[i, mapColumn] = 'None'
     return df
 
-def outputSamples(df, outfile):
+def outputSamples(df, outputFolder):
+    outfile = os.path.join(outputFolder, 'samples.csv')
     df.to_csv( outfile )
+
+def stats(df, desid, outputFolder='/mnt/SBC1/data/Biomaterials/learn'):
+    """ Perform some statistical analysis of the factors """
+    targets = {}
+    for j in np.arange(len(df.columns)):
+        x = df.columns[j]
+        if x.startswith('Target') and x.endswith('Conc'):
+            if len( df[x].unique() ) > 1:
+                targets[ x ] = 'Unknown compound'
+                for i in df.index:
+                    try:
+                        if np.isnan( df.loc[i,df.columns[j-1]] ):
+                            continue
+                    except:
+                        pass
+                    targets[ x ] = df.loc[i,df.columns[j-1]]
+                    break
+            
+    factors = []
+    for x in np.flip( df.columns ):
+        if x == 'Design':
+            break
+        factors.append( x )
+    factors.reverse()
+    targetsList = sorted( targets )
+    for i in np.arange(len(targetsList)):
+        t = targetsList[i]
+        formula = "Q('{}') ~".format( t )
+        terms = []
+        for f in factors:
+            terms.append( "Q('{}')".format( f ) )
+        formula += ' + '.join(terms)
+        ols = smf.ols( formula=formula, data=df)
+        res = ols.fit()
+        info = res.summary()
+        outfile = os.path.join( outputFolder, desid+'_summary_'+str(i)+'.csv' )
+        cv = 'Design: , {}\n'.format(desid)
+        cv +='Target: , {}\n'.format(targets[t])
+        cv += info.as_csv()
+        with open(outfile, 'w') as h:
+            h.write( cv )
+        outfile = os.path.join( outputFolder, desid+'_summary_'+str(i)+'.html' )
+        htm = '<div><b>Design: </b>'+desid+'</div>'
+        htm += '<div><b>Target: </b>'+targets[t]+'</div>'
+        htm += info.as_html()
+        with open(outfile, 'w') as h:
+            h.write(htm)
+
+def outputFactors(df, designsFolder='/mnt/syno/shared/Designs',
+                  outputFolder='/mnt/SBC1/data/Biomaterials/learn', mapColumn='Plasmid Name'):
+    plateId = {}
+    desId = {}
+    for i in df.index:
+        plid = df.loc[i,mapColumn]
+        if type(plid) == str and plid.startswith('SBCDE'):
+            try:
+                sbcid, plid = plid.split('_')
+            except:
+                continue
+            if sbcid not in desId:
+                desId[sbcid] = []
+            desId[sbcid].append( i )
+            plateId[sbcid] = df.loc[i,'Plate ID']
+    for des in desId:
+        rows = []
+        factorFile = os.path.join(designsFolder, des, 'Design', des+'_factors.csv')
+        if os.path.exists(factorFile):
+            fcdf = pd.read_csv(factorFile)
+        else:
+            continue
+        facdict = {}
+        for i in fcdf.index:
+            facdict[fcdf.loc[i,'Design']] = i
+        for i in desId[des]:
+            design = df.loc[i,mapColumn]
+            if design in facdict:
+                rows.append( np.hstack( [df.loc[i,:],fcdf.loc[facdict[design],:]] ) )
+        if len(rows) > 0:
+            fulldf = pd.DataFrame( rows, columns=np.hstack( [df.columns, fcdf.columns] ) )
+            desi = des+'_'+plateId[des]
+            outcsv = os.path.join(outputFolder, desi+'_learn.csv')
+            fulldf.to_csv( outcsv )
+            stats( fulldf, desi )
 
 def readDesign( dfile, des={} ):
     with open(dfile) as h:
@@ -63,6 +166,7 @@ def addDesignColumns( df, designsFolder='/mnt/syno/shared/Designs', ext='.j0', m
     """ Create additional columns with the design combinations """
     """ TO DO: transform positional parameters into: promoters in front of genes, gene variants, and pairings  """
     designs = set()
+    import pdb
     for plasmid in df[mapColumn].unique():
         try:
             if plasmid.startswith('SBCDE'):
@@ -85,9 +189,12 @@ def addDesignColumns( df, designsFolder='/mnt/syno/shared/Designs', ext='.j0', m
 if __name__ == '__main__':
     parser = arguments()
     arg = parser.parse_args()
-    if arg.outFile is None:
-        arg.outFile = os.path.join( os.path.dirname( arg.dts ), 'samples.csv' )
-    df = samples( arg.dts )
-    df = mapPlasmids( df )
-    addDesignColumns( df )
-    outputSamples( df, arg.outFile )
+    for dirName, subdirList, fileList in os.walk( arg.dts ):
+        for dts in fileList:
+            if dts.lower().endswith( 'xlsm') and not dts.startswith('~') and len(dts.split('_')) == 1:
+                print( dirName, dts )
+                df = samples( os.path.join(dirName, dts) )
+                df = mapPlasmids( df, arg )
+                addDesignColumns( df )
+            #    outputSamples( df, outputFolder=arg.outFolder )
+                outputFactors( df, outputFolder=arg.outFolder )

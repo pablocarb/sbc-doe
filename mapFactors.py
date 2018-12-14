@@ -77,6 +77,11 @@ def contiguousGene(dlib, labels):
         for x in dlib[design]:
             m = x.split('_')
             if x.startswith('g'):
+                if labels[x] == 'None':
+                    # This is a special case of "empty gene"
+                    # Keep gid as previous gene and continue
+                    gid = gprev
+                    continue
                 gid = m[0]
                 if gid in labels:
                     gid = labels[gid]
@@ -85,6 +90,7 @@ def contiguousGene(dlib, labels):
                     if key not in cont:
                         cont[key] = set()
                     cont[key].add(design)
+                gprev = gid
             elif x.startswith('p') and labels[x] == 'None':
                 gprev = gid
                 continue
@@ -168,9 +174,16 @@ def mapLibrary(dlib, equiv):
             try:
                 if construct[j] == '':
                     construct[j] = 'None'
+                if dlib[plasmid][j] in eqlib and construct[j] == 'None':
+                    # do not update if it is not empty (see comment below)
+                    continue
                 eqlib[dlib[plasmid][j]] = construct[j]
             except:
-                eqlib[dlib[plasmid][j]] = 'None'
+                # This can happen because some parts are removed
+                # in one of the constructs, prioritize assigning 
+                # a value if somewhere happens in the library
+                if dlib[plasmid][j] not in eqlib:
+                    eqlib[dlib[plasmid][j]] = 'None'
             
     return eqlib
 

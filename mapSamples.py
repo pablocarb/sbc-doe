@@ -33,6 +33,21 @@ def samples(dts, sheetName='Samples'):
         df = None
     return df
 
+def filterSBCid(x):
+    """ Try to figure out the SBC id """
+    try:
+        iceid = int(x)
+        sbcid = 'SBC'+"%06d" % (iceid,)
+    except:
+        try:
+            if x.startswith('SBC') and len(x) >= 9:
+                sbcid = x[0:9]
+            else:
+                sbcid = None
+        except:
+            sbcid = None
+    return sbcid
+
 def mapPlasmids(df, arg, column='Strain ID', mapColumn='Plasmid Name', iceurl="https://ice.synbiochem.co.uk"):
     """ Map plasmids into their names in ICE, they should contain the DoE plasmid name """
     plmap = {}
@@ -43,29 +58,24 @@ def mapPlasmids(df, arg, column='Strain ID', mapColumn='Plasmid Name', iceurl="h
     else:
         ids = set()
         for x in df.loc[:,column]:
-            try:
-                iceid = int(x)
-                ids.add( iceid )
-            except:
-                continue
+            sbcid = filterSBCid(x)
+            if sbcid is not None:
+                ids.add( sbcid )
         client = ice_utils.ICEClient(iceurl,os.environ['ICE_USERNAME'], os.environ['ICE_PASSWORD'])
         plmap = {}
-        for ice in ids:
+        for sbcid in ids:
             try:
-                entry = client.get_ice_entry( ice )
+                entry = client.get_ice_entry( sbcid )
                 name = entry.get_name()
-                sbcid = 'SBC'+"%06d" % (ice,)
                 plmap[ sbcid ] = name
             except:
                 continue
-    print(df[column].unique())
     for i in range(0, df.shape[0]):
-        try:
-            iceid = df.loc[i, column]
-            sbcid = 'SBC'+"%06d" % (iceid,)
-            if sbcid in plmap:
-                df.loc[i, mapColumn] = plmap[ sbcid ]
-        except:
+        x = df.loc[i,column]
+        sbcid = filterSBCid(x)
+        if sbcid is not None and sbcid in plmap:
+            df.loc[i, mapColumn] = plmap[ sbcid ]
+        else:
             df.loc[i, mapColumn] = 'None'
     return df
 
@@ -191,8 +201,8 @@ if __name__ == '__main__':
     arg = parser.parse_args()
     for dirName, subdirList, fileList in os.walk( arg.dts ):
         for dts in fileList:
-            if dts.lower().endswith( 'xlsm') and not dts.startswith('~') and len(dts.split('_')) == 1:
-                print( dirName, dts )
+            if dts.lower().endswith( 'xlsm') and not dts.startswith('~'):# and len(dts.split('_')) == 1:
+                print( dts )
                 df = samples( os.path.join(dirName, dts) )
                 df = mapPlasmids( df, arg )
                 addDesignColumns( df )

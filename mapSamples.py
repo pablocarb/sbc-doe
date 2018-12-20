@@ -83,7 +83,7 @@ def outputSamples(df, outputFolder):
     outfile = os.path.join(outputFolder, 'samples.csv')
     df.to_csv( outfile )
 
-def stats(df, desid, outputFolder='/mnt/SBC1/data/Biomaterials/learn'):
+def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/learn'):
     """ Perform some statistical analysis of the factors """
     targets = {}
     for j in np.arange(len(df.columns)):
@@ -127,6 +127,15 @@ def stats(df, desid, outputFolder='/mnt/SBC1/data/Biomaterials/learn'):
         htm = '<div><b>Design: </b>'+desid+'</div>'
         htm += '<div><b>Target: </b>'+targets[t]+'</div>'
         htm += info.as_html()
+        if doeinfo is not None:
+            ix = []
+            for i in doeinfo.index:
+                try:
+                    int( doeinfo.iloc[i,0] )
+                    ix.append( i )
+                except:
+                    continue
+            htm += doeinfo.iloc[ix,0:7].to_html(index=False)
         with open(outfile, 'w') as h:
             h.write(htm)
 
@@ -152,6 +161,11 @@ def outputFactors(df, designsFolder='/mnt/syno/shared/Designs',
             fcdf = pd.read_csv(factorFile)
         else:
             continue
+        doeFile = os.path.join(designsFolder, des, 'Design', 'DoE_'+re.sub('SBCDE', 'SBC', des)+'.xlsx')
+        if os.path.exists(doeFile):
+            doeinfo = pd.read_excel( doeFile )
+        else:
+            doeinfo = None
         facdict = {}
         for i in fcdf.index:
             facdict[fcdf.loc[i,'Design']] = i
@@ -164,7 +178,7 @@ def outputFactors(df, designsFolder='/mnt/syno/shared/Designs',
             desi = des+'_'+plateId[des]
             outcsv = os.path.join(outputFolder, desi+'_learn.csv')
             fulldf.to_csv( outcsv )
-            stats( fulldf, desi )
+            stats( fulldf, desi, doeinfo )
 
 def readDesign( dfile, des={} ):
     with open(dfile) as h:

@@ -342,13 +342,12 @@ def getsbcid(name, description, designid=None):
     """ Try to get design number if possible, otherwise keep the full label """
     """ Do not register in ICE, this is perfomed downstream in the pipeline """
     global ID_COUNTER
-    
     try:
-        desn = "DE%02d" % (int(re.sub('^.*SBC', '', designid)),)
+        desn = "SBCDE%05d" % (int(re.sub('^.*SBCDE', '', designid)),)
     except:
         desn = designid
                         
-    partid = "SBC_%s_PL%02d" % (desn,ID_COUNTER)
+    partid = "%s_PL%02d" % (desn,ID_COUNTER)
     ID_COUNTER = ID_COUNTER + 1
     return partid
 
@@ -601,6 +600,9 @@ def readJMP(jmp):
             if len(row[i]) == 0:
                 continue
             fact = header[i]
+            # Full factorials include an additional "Pattern" column
+            if fact.endswith('Pattern'):
+                continue
             if fact not in doejmp['design']:
                 doejmp['design'][fact] = []
             try:
@@ -809,7 +811,7 @@ def run_doe(args=None):
             if cad:
                 pcad(fname, rid, clean=arg.k, nolabel=arg.nolab)
             if vcad:
-                viscad.runViscad(args=[fname, '-i', csvname, '-l', logfile])
+                viscad.runViscad(args=[fname, '-i', csvname, '-l', logfile,'-v2'])
     if arg.r: # Regular fractional factorial design
         # Trivial case, no need of calling planor package
         if len(factors) == 1:

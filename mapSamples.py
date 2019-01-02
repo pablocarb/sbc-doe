@@ -7,6 +7,7 @@ To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 
 @author:  Pablo Carbonell, SYNBIOCHEM
 @description: Map samples into their DoEs ids (and generate factors table)
+@usage: mapSamples.py dts -outFolder OUTFOLDER -iceEntries ICEENTRIES -designsFolder DESIGNSFOLDER
 '''
 import os, re, argparse, csv
 import pandas as pd
@@ -15,15 +16,15 @@ import statsmodels.formula.api as smf
 from synbiochem.utils import ice_utils
 
 def arguments():
-    parser = argparse.ArgumentParser(description='MapSamples. Pablo Carbonell, SYNBIOCHEM, 2018')
+    parser = argparse.ArgumentParser(description='MapSamples: Learn design rules. Pablo Carbonell, SYNBIOCHEM, 2018')
     parser.add_argument('dts', 
                         help='Data tracking sheet folder')
-    parser.add_argument('-outFile',  default=None,
-                        help='Output file (default: dtsFolder/samples.csv)')
     parser.add_argument('-outFolder',  default='/mnt/SBC1/data/Biomaterials/learn',
                         help='Output folder ')
     parser.add_argument('-iceEntries',  default=None,
-                        help='ICE entries file (instead of accessing client)')
+                        help='ICE entries csv file (instead of accessing client)')
+    parser.add_argument('-designsFolder', default='/mnt/syno/shared/Designs',
+                        help='Folder that contains the design templates')
     return parser
 
 def samples(dts, sheetName='Samples'):
@@ -84,7 +85,11 @@ def outputSamples(df, outputFolder):
     df.to_csv( outfile )
 
 def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/learn'):
-    """ Perform some statistical analysis of the factors """
+    """ Perform some statistical analysis of the factors 
+        - df: DataFrame containing the factors and the response;
+        - doeinfo: DataFrame generated from the info file;
+        - outputFolder
+    """
     targets = {}
     for j in np.arange(len(df.columns)):
         x = df.columns[j]
@@ -140,9 +145,12 @@ def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/lea
             h.write(htm)
 
 def outputFactors(df, designsFolder='/mnt/syno/shared/Designs',
-                  outputFolder='/mnt/SBC1/data/Biomaterials/learn', mapColumn='Plasmid Name'):
+                  outputFolder='/mnt/SBC1/data/Biomaterials/learn', mapColumn='Plasmid Name',
+                  plateColumn='Plate ID'):
     plateId = {}
     desId = {}
+    # Loop through the dts, retrieve design + plasmid id from the mapColumn, 
+    # retrieve plateid from plateColumn
     for i in df.index:
         plid = df.loc[i,mapColumn]
         if type(plid) == str and plid.startswith('SBCDE'):
@@ -153,19 +161,23 @@ def outputFactors(df, designsFolder='/mnt/syno/shared/Designs',
             if sbcid not in desId:
                 desId[sbcid] = []
             desId[sbcid].append( i )
-            plateId[sbcid] = df.loc[i,'Plate ID']
+            plateId[sbcid] = df.loc[i,plateColumn]
+    # For each design, read factors, read doe, add "independent" factors, perform stats
     for des in desId:
+        # Read factors
         rows = []
         factorFile = os.path.join(designsFolder, des, 'Design', des+'_factors.csv')
         if os.path.exists(factorFile):
             fcdf = pd.read_csv(factorFile)
         else:
             continue
+        # Read doe
         doeFile = os.path.join(designsFolder, des, 'Design', 'DoE_'+re.sub('SBCDE', 'SBC', des)+'.xlsx')
         if os.path.exists(doeFile):
             doeinfo = pd.read_excel( doeFile )
         else:
             doeinfo = None
+        # Add "independent" factors
         facdict = {}
         for i in fcdf.index:
             facdict[fcdf.loc[i,'Design']] = i
@@ -173,12 +185,13 @@ def outputFactors(df, designsFolder='/mnt/syno/shared/Designs',
             design = df.loc[i,mapColumn]
             if design in facdict:
                 rows.append( np.hstack( [df.loc[i,:],fcdf.loc[facdict[design],:]] ) )
+        # Perform stats, output results
         if len(rows) > 0:
             fulldf = pd.DataFrame( rows, columns=np.hstack( [df.columns, fcdf.columns] ) )
             desi = des+'_'+plateId[des]
             outcsv = os.path.join(outputFolder, desi+'_learn.csv')
             fulldf.to_csv( outcsv )
-            stats( fulldf, desi, doeinfo )
+            stats( fulldf, desi, doeinfo, outputFolder )
 
 def readDesign( dfile, des={} ):
     with open(dfile) as h:
@@ -217,8 +230,12 @@ if __name__ == '__main__':
         for dts in fileList:
             if dts.lower().endswith( 'xlsm') and not dts.startswith('~'):# and len(dts.split('_')) == 1:
                 print( dts )
+                # read a DataFrame with the samples
                 df = samples( os.path.join(dirName, dts) )
+                # Map plasmids into their names in ICE, they should contain the DoE plasmid name 
                 df = mapPlasmids( df, arg )
-                addDesignColumns( df )
+                # Create additional columns with the design combinations
+                addDesignColumns( df, designsFolder=arg.designsFolder )
             #    outputSamples( df, outputFolder=arg.outFolder )
-                outputFactors( df, outputFolder=arg.outFolder )
+                # Output some statistics about the factors
+                outputFactors( df, designsFolder=arg.designsFolder, outputFolder=arg.outFolder )

@@ -13,6 +13,7 @@ import os, re, argparse, csv
 import pandas as pd
 import numpy as np
 import statsmodels.formula.api as smf
+from itertools import product
 from synbiochem.utils import ice_utils
 
 def arguments():
@@ -84,6 +85,59 @@ def outputSamples(df, outputFolder):
     outfile = os.path.join(outputFolder, 'samples.csv')
     df.to_csv( outfile )
 
+def bestCombinations(df, res):
+    """ Predict best allowed combinations (experimental)
+    Based solely on the values present on the library
+    (no suggestion for introducing new changes)
+    """
+    descol = [i for i in df.columns]
+    descol.reverse()
+    
+    for i in np.arange(len(descol)):
+        if descol[i] == 'Design':
+            break
+    descol = descol[:i]
+    descol.reverse()
+    pos = []
+    for d in descol:
+        try:
+            a,b = d.split('_')
+        except:
+            continue
+        if re.match('g\d+',a) and re.match('g\d+',b):
+            pos.append(d)
+    # unique combinations
+    combi = []
+    ugroup = []
+    ucomb = []
+    # If multiple positional combinations are possible
+    if len(pos) > 0:
+        ucol = df.loc[:,pos].drop_duplicates()
+        for x in ucol.index:
+            ix = None
+            for y in ucol.columns:
+                cond = df[y] == ucol.loc[x,y]
+                if ix is None:
+                    ix = cond
+                else:
+                    ix = np.logical_and(ix, cond)
+            ugroup.append(ix)
+            combo = []
+            for z in descol:
+                combo.append( df.loc[ix,z].unique() )
+            ucomb.append( combo )
+            combi.extend( [w for w in product( *combo )] )
+    else:
+            combo = []
+            for z in descol:
+                combo.append( df.loc[:,z].unique() )
+            ucomb.append( combo )
+            combi.extend( [w for w in product( *combo )] )
+    ndata = pd.DataFrame(combi, columns=descol)
+    ndata['pred'] = res.predict( ndata )
+    ndata = ndata.sort_values(by='pred', ascending=False)
+    return ndata
+
 def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/learn'):
     """ Perform some statistical analysis of the factors 
         - df: DataFrame containing the factors and the response;
@@ -122,6 +176,7 @@ def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/lea
         ols = smf.ols( formula=formula, data=df)
         res = ols.fit()
         info = res.summary()
+        ndata = bestCombinations(df, res)
         outfile = os.path.join( outputFolder, desid+'_summary_'+str(i)+'.csv' )
         cv = 'Design: , {}\n'.format(desid)
         cv +='Target: , {}\n'.format(targets[t])
@@ -140,7 +195,10 @@ def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/lea
                     ix.append( i )
                 except:
                     continue
+            htm += '<div><b>DoE specifications:</b></div>'
             htm += doeinfo.iloc[ix,0:7].to_html(index=False)
+        htm += '<div><b>Predicted best combinations (experimental):</b></div>'
+        htm += ndata.to_html(index=False)
         with open(outfile, 'w') as h:
             h.write(htm)
 

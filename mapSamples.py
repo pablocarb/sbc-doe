@@ -138,6 +138,9 @@ def bestCombinations(df, res):
     ndata = ndata.sort_values(by='pred', ascending=False)
     return ndata
 
+def title(text, level=2):
+    return '<h{}>{}</h{}>'.format(str(level), text, str(level))
+
 def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/learn'):
     """ Perform some statistical analysis of the factors 
         - df: DataFrame containing the factors and the response;
@@ -184,9 +187,17 @@ def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/lea
         with open(outfile, 'w') as h:
             h.write( cv )
         outfile = os.path.join( outputFolder, desid+'_summary_'+str(i)+'.html' )
-        htm = '<div><b>Design: </b>'+desid+'</div>'
+        htm = '<link rel="stylesheet" href="style.css">'
+        htm += title('Predictive Analytics', 1)
+        htm += '<div><b>Design: </b>'+desid+'</div>'
         htm += '<div><b>Target: </b>'+targets[t]+'</div>'
-        htm += info.as_html()
+        sections = ['Model fitting:', 'Contrast and regression effects:', 'Model diagnostics:']
+        nTable = 0
+        for line in info.as_html().split('\n'):
+            if line.startswith('<table'):
+                htm += title(sections[nTable])
+                nTable += 1
+            htm += line
         if doeinfo is not None:
             ix = []
             for i in doeinfo.index:
@@ -195,9 +206,9 @@ def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/lea
                     ix.append( i )
                 except:
                     continue
-            htm += '<div><b>DoE specifications:</b></div>'
+            htm += title('DoE specifications:')
             htm += doeinfo.iloc[ix,0:7].to_html(index=False)
-        htm += '<div><b>Predicted best combinations (experimental):</b></div>'
+        htm += title('Predicted best combinations:')
         htm += ndata.to_html(index=False)
         with open(outfile, 'w') as h:
             h.write(htm)

@@ -43,4 +43,11 @@ if __name__ == '__main__':
         response = net_utils.get( url, headers=client._ICEClient__headers )    
         df1, total = response2df( response )
         df = pd.concat( [df, df1], ignore_index=True, sort=True)
+    if 'Name' not in df.columns:
+        # Use both namings to avoid issues
+        try:
+            df['Name'] = df['name']
+            df['Part ID'] = df['partId']
+        except:
+            pass
     df.to_csv( arg.outcsv, index=False )

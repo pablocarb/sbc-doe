@@ -55,8 +55,15 @@ def mapPlasmids(df, arg, column='Strain ID', mapColumn='Plasmid Name', iceurl="h
     plmap = {}
     if arg.iceEntries is not None and os.path.exists( arg.iceEntries ):
         icedf = pd.read_csv( arg.iceEntries )
+        # Patch depending if the entries file is retrieved from json or from the website
+        if 'partId' in icedf.columns:
+            partIdix = 'partId'
+            nameix = 'name'
+        else:
+            partIdix = 'Part ID'
+            nameix = 'Name'
         for i in icedf.index:
-            plmap[ icedf.loc[i,'Part ID'] ] = icedf.loc[i,'Name']
+            plmap[ icedf.loc[i,partIdix] ] = icedf.loc[i,nameix]
     else:
         ids = set()
         for x in df.loc[:,column]:
@@ -84,6 +91,113 @@ def mapPlasmids(df, arg, column='Strain ID', mapColumn='Plasmid Name', iceurl="h
 def outputSamples(df, outputFolder):
     outfile = os.path.join(outputFolder, 'samples.csv')
     df.to_csv( outfile )
+    
+
+    
+def bestPlasmids(ndata, doeinfo):
+    """ Start with best predicted combinations
+    convert into possible plasmids """
+    # Look for allowed positions for each part
+    constraints = {}
+    movpos = set()
+    movpart = set()
+    for i in doeinfo.index:
+        part = doeinfo.loc[i,'Part number']
+        pos = doeinfo.loc[i,'DoE position']
+        ptype = doeinfo.loc[i,'DoE designation']
+        perm = doeinfo.loc[i,'DoE permutation class']
+        if part == '-':
+            part = 'None'
+        try:
+            pos = int(pos)
+        except:
+            continue
+        if perm == 1.0:
+            movpos.add( pos )
+            movpart.add( part )
+        if pos not in constraints:
+            constraints[pos] = set()
+        constraints[pos].add( part )
+    for pos in movpos:
+        for part in movpart:
+            constraints[pos].add( part )
+    # const2 are the factor constraints, i.e which factors are possible at each position
+    # map2 are possible values that can take the factor with no constraints 
+    # (to be used only if the predicted DoE has not introduced a constraint )
+    const2 = {}
+    map2 = {}
+    cols = {}
+    for i in doeinfo.index:
+        part = doeinfo.loc[i,'Part number']
+        pos = doeinfo.loc[i,'DoE position']
+        ptype = doeinfo.loc[i,'DoE designation']
+        perm = doeinfo.loc[i,'DoE permutation class']
+        if part == '-':
+            part = 'None'
+        try:
+            pos = int(pos)
+        except:
+            continue
+        cols[pos] = ptype
+        partclass = set()
+        if ptype == 'origin':
+            partclass.add( 'pl' )
+        elif ptype == 'resistance':
+            partclass.add( 're' )
+        elif ptype == 'promoter':
+            pnext = pos + 1
+            # if the gene next is mobile
+            # then add
+            if pnext in movpos:
+                for p in movpos:
+                    partclass.add( 'p_'+'g'+str(p) )
+            else:
+                partclass.add('p_'+'g'+str(pnext) ) 
+        # Not clear how to deal with multple variants: to do
+        elif ptype == 'gene':
+            if pos in movpos:
+                for p in movpos:
+                    partclass.add( 'g_'+'g'+str(p) )
+            else:
+                partclass.add('g_'+'g'+str(pos))
+        const2[pos] = partclass
+        for p in partclass:
+            if p not in map2:
+                map2[p] = set()
+            map2[p].add(part)
+    nplas = []
+    for index, row in ndata.iterrows():
+        w = []
+        watch = set()
+        pwatch = []
+        for pos in sorted( const2 ):
+            v = []
+            for x in sorted(const2[pos]):
+                if x in row:
+                    if row[x] in constraints[pos] and row[x] not in watch:
+                        if x.startswith('g_'):
+                            promo = re.sub('g_','p_',x)
+                            if promo in row and promo != pwatch[-1]:
+                                continue
+                        v.append( row[x] )  
+                        watch.add(row[x])
+                        pwatch.append(x)
+                else:
+                    for y in map2[x]:
+                        if y not in watch:
+                            v.append(y)
+                            watch.add(y)
+                            pwatch.append(x)
+            w.append(v)
+        for h in product( *w ):
+            nplas.append(h+(row['pred'],))
+    coln = []
+    px = 1
+    for z in sorted(cols):
+        coln.append( "{}.{}".format(px, cols[z]))
+        px += 1
+    coln += [ "{}.{}".format(px, 'pred')]
+    return pd.DataFrame( nplas, columns=coln )
 
 def bestCombinations(df, res):
     """ Predict best allowed combinations (experimental)
@@ -180,6 +294,10 @@ def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/lea
         res = ols.fit()
         info = res.summary()
         ndata = bestCombinations(df, res)
+        if doeinfo is not None:
+            nplasm = bestPlasmids(ndata, doeinfo)
+        else:
+            nplasm = None
         outfile = os.path.join( outputFolder, desid+'_summary_'+str(i)+'.csv' )
         cv = 'Design: , {}\n'.format(desid)
         cv +='Target: , {}\n'.format(targets[t])
@@ -210,6 +328,9 @@ def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/lea
             htm += doeinfo.iloc[ix,0:7].to_html(index=False)
         htm += title('Predicted best combinations:')
         htm += ndata.to_html(index=False)
+        if nplasm is not None:
+            htm += title('Predicted best constructs:')
+            htm += nplasm.to_html(index=False)
         with open(outfile, 'w') as h:
             h.write(htm)
 
@@ -272,7 +393,6 @@ def addDesignColumns( df, designsFolder='/mnt/syno/shared/Designs', ext='.j0', m
     """ Create additional columns with the design combinations """
     """ TO DO: transform positional parameters into: promoters in front of genes, gene variants, and pairings  """
     designs = set()
-    import pdb
     for plasmid in df[mapColumn].unique():
         try:
             if plasmid.startswith('SBCDE'):

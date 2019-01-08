@@ -842,7 +842,7 @@ def run_doe(args=None):
                 arg.optDes = path.join(outfolder, arg.optDes)
             if not path.exists(arg.optDes):
                 raise Exception('DoE file not found')     
-           doeJMP = readOptDes(arg.optDes) 
+            doeJMP = readOptDes(arg.optDes) 
         for des in range(0, len(doeJMP)):
             if rid is not None:
                 fname0 = designid+'.ji'+str(des)

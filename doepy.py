@@ -65,6 +65,7 @@ def convert_construct(xct, AddBlankPromoter=False):
                     sbcid = True
                     break
             if sbcid:
+                # If there are SBC ids, then anything that is not an sbc id is ignored
                 ll = []
                 for l in xct[p]['levels']:
                     if l.startswith('SBC'):
@@ -73,6 +74,17 @@ def convert_construct(xct, AddBlankPromoter=False):
                         lev = None
                     ll.append(lev)
                 xct[p]['levels'] = ll
+            else:
+                # If there are no SBC ids, then '-' are considered empty promoters
+                ll = []
+                for l in xct[p]['levels']:
+                    if l != '-':
+                        lev = l
+                    else:
+                        lev = None
+                    ll.append(lev)
+                xct[p]['levels'] = ll
+                
     for p in sorted(xct):
         levels = xct[p]['levels']
         comp = xct[p]['component']
@@ -751,6 +763,8 @@ def run_doe(args=None):
     else:
         xct, partinfo, seed = read_json(inputfile)
         ct, rid = convert_construct(xct, AddBlankPromoter=arg.blankPromoter)
+    import pdb
+    pdb.set_trace()
     if arg.c:
         for s in seql:
             write_fasta(path.join(outpath, outfolder, s+'.fasta'), s, seql[s])

@@ -763,8 +763,6 @@ def run_doe(args=None):
     else:
         xct, partinfo, seed = read_json(inputfile)
         ct, rid = convert_construct(xct, AddBlankPromoter=arg.blankPromoter)
-    import pdb
-    pdb.set_trace()
     if arg.c:
         for s in seql:
             write_fasta(path.join(outpath, outfolder, s+'.fasta'), s, seql[s])

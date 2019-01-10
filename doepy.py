@@ -9,21 +9,16 @@ To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 @description: SYNBIOCHEM design of experiments
 '''
 from os import path, mkdir, system, unlink
-import shutil, glob
 import sys, re
 import argparse
 from datetime import datetime
 import numpy as np
 import pandas as pd
 import brOrligos
-import sys
 import csv
 import json
-import random
 from viscad import viscad
 from mapFactors import mapFolder
-import brOrligos
-import rpy2
 import rpy2.robjects as robjects
 
 ID_COUNTER = 1
@@ -500,6 +495,7 @@ def save_seqs(outpath, constructid, libr, seql):
 # If firstcolumn, the first column is the contruct name
 def pcad(f, rid=None, firstcolumn=True, label=True,
          predefined='predefined_colors.txt', clean=True, nolabel=False):
+    """ Generate a Pigeoncad plot. Discontinued because of connection issues """
     pcolors = {}
     if predefined is not None:
         for l in open(predefined):

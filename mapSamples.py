@@ -255,6 +255,60 @@ def bestCombinations(df, res):
 def title(text, level=2):
     return '<h{}>{}</h{}>'.format(str(level), text, str(level))
 
+def livetitle(text, nsection, level=2):
+    string = '<h{}><a  href="#" onclick="'+"toggle_visibility('sec{}');"+'" title="Show/Hide">+ </a>{}</h{}>'
+    return string.format(str(level), nsection, text, str(level))
+
+def startSection( nsection, sectitle ):
+    ht = livetitle( sectitle, nsection )
+    ht += '<div id="sec{}">'.format( nsection )
+    return ht
+
+def statsHTML(outfile, info, desid, target, doeinfo, ndata, nplasm):
+    """ Output an HTML file with the analysis """
+    """ target: targets[t] """
+    htm = '<link rel="stylesheet" href="style.css">'
+    htm += '<script src="script.js"></script>'
+    htm += title('Predictive Analytics', 1)
+    htm += '<div><b>Design: </b>'+desid+'</div>'
+    htm += '<div><b>Target: </b>'+target+'</div>'
+    sections = ['Model fitting:', 'Contrast and regression effects:', 'Model diagnostics:']
+    nTable = 0
+    for line in info.as_html().split('\n'):
+        if line.startswith('<table'):
+#            htm += title(sections[nTable])
+            htm += startSection( nTable, sections[nTable] ) 
+            nTable += 1
+        htm += line
+        if line.startswith('</table'):
+            htm += '</div>'
+    if doeinfo is not None:
+        ix = []
+        for i in doeinfo.index:
+            try:
+                int( doeinfo.iloc[i,0] )
+                ix.append( i )
+            except:
+                continue
+#        htm += title('DoE specifications:')
+        htm += startSection( nTable, 'DoE specifications:' )
+        nTable += 1
+        htm += doeinfo.iloc[ix,0:7].to_html(index=False)
+        htm += '</div>'
+#    htm += title('Predicted best combinations:')
+    htm += startSection( nTable, 'Predicted best combinations:' )
+    nTable += 1
+    htm += ndata.to_html(index=False)
+    htm += '</div>'
+    if nplasm is not None:
+#        htm += title('Predicted best constructs:')
+        htm += startSection( nTable, 'Predicted best constructs:' )
+        nTable += 1
+        htm += nplasm.to_html(index=False)
+        htm += '</div>'
+    with open(outfile, 'w') as h:
+        h.write(htm)
+
 def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/learn'):
     """ Perform some statistical analysis of the factors 
         - df: DataFrame containing the factors and the response;
@@ -305,38 +359,14 @@ def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/lea
         with open(outfile, 'w') as h:
             h.write( cv )
         outfile = os.path.join( outputFolder, desid+'_summary_'+str(i)+'.html' )
-        htm = '<link rel="stylesheet" href="style.css">'
-        htm += title('Predictive Analytics', 1)
-        htm += '<div><b>Design: </b>'+desid+'</div>'
-        htm += '<div><b>Target: </b>'+targets[t]+'</div>'
-        sections = ['Model fitting:', 'Contrast and regression effects:', 'Model diagnostics:']
-        nTable = 0
-        for line in info.as_html().split('\n'):
-            if line.startswith('<table'):
-                htm += title(sections[nTable])
-                nTable += 1
-            htm += line
-        if doeinfo is not None:
-            ix = []
-            for i in doeinfo.index:
-                try:
-                    int( doeinfo.iloc[i,0] )
-                    ix.append( i )
-                except:
-                    continue
-            htm += title('DoE specifications:')
-            htm += doeinfo.iloc[ix,0:7].to_html(index=False)
-        htm += title('Predicted best combinations:')
-        htm += ndata.to_html(index=False)
-        if nplasm is not None:
-            htm += title('Predicted best constructs:')
-            htm += nplasm.to_html(index=False)
-        with open(outfile, 'w') as h:
-            h.write(htm)
+        statsHTML(outfile, info, desid, targets[t], doeinfo, ndata, nplasm)
+    return targetsList
 
 def outputFactors(df, designsFolder='/mnt/syno/shared/Designs',
                   outputFolder='/mnt/SBC1/data/Biomaterials/learn', mapColumn='Plasmid Name',
-                  plateColumn='Plate ID'):
+                  plateColumn='Plate ID', info=None ):
+    """ Output the file with the factors and call the learn routine """
+    """ Info: add extra info like file name in order to identify better the file """
     plateId = {}
     desId = {}
     # Loop through the dts, retrieve design + plasmid id from the mapColumn, 
@@ -378,11 +408,16 @@ def outputFactors(df, designsFolder='/mnt/syno/shared/Designs',
         # Perform stats, output results
         if len(rows) > 0:
             fulldf = pd.DataFrame( rows, columns=np.hstack( [df.columns, fcdf.columns] ) )
-            desi = des+'_'+plateId[des]
-            outcsv = os.path.join(outputFolder, desi+'_learn.csv')
-            fulldf.to_csv( outcsv )
-            stats( fulldf, desi, doeinfo, outputFolder )
-
+            if info is None:
+                desi = des+'_'+plateId[des]
+            else:
+                desi = des+'_'+info
+            targetsList = stats( fulldf, desi, doeinfo, outputFolder )
+            if len(targetsList) > 0:
+                print( targetsList )
+                outcsv = os.path.join(outputFolder, desi+'_learn.csv')
+                fulldf.to_csv( outcsv )
+    
 def readDesign( dfile, des={} ):
     with open(dfile) as h:
         for line in h:

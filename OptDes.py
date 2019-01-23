@@ -13,7 +13,9 @@ Created on Tue Nov 27 16:01:46 2018
 """
 import numpy as np
 import pandas as pd
-import itertools, re
+import itertools, re 
+from scipy.stats import f as FDist, ncf as ncFDist
+
 
 def Deff(X):
     # D-efficiency
@@ -53,6 +55,8 @@ def randExp( factors, n ):
             V = vnew
         else:
             V = np.vstack( [V, vnew] )
+    if len(V.shape) == 1:
+        V = np.expand_dims(V, axis=0)
     return np.transpose( V )
 
 
@@ -80,10 +84,19 @@ def grid(n, weighted=True):
         W = W*np.sqrt(n-1)
     return W
 
+
 # Precompute the hypercube grids
 gridList = {}
-for i in np.arange(2,20):
-    gridList[i] = grid(i)
+def initGrid(factors):
+    global gridList
+    vmax = set( [len(x) for x in factors] ) 
+    for i in vmax:
+        try:
+            if i < 2:
+                continue
+        except:
+            continue
+        gridList[i] = grid(i)
 
 
 #%%
@@ -117,6 +130,8 @@ def mapFactors( factors, M ):
 def mapFactors2( M, factors ):
     # Map a numerical factor into [-1,1] range, 
     # create orthogonal coordinates for dummy variables for categorical factors
+    global gridList
+    # Add column for intercept
     Mn = np.transpose( [np.ones( M.shape[0] )] )
     for i in np.arange( len(factors) ):
         v = factors[i]
@@ -297,21 +312,26 @@ def CoordExch1( factors, n, verb=True, obj=Dopt ): # Deff2
     
     # Start with an already sub-optimized design by DetMax
     # (it does not make too mauch difference)
-    M = DetMax2( factors, n, 100 )
-#    M = randExp( factors, n )
+    print('Init design')
+ #   M = DetMax2( factors, n, 100 )
+    M = randExp( factors, n )
+    print('Start optimization')
     # D-Efficiency of the initial design
     J = 0
     Jn = Dopt2(M, factors)
     q = M.shape[0]
     while J < Jn:
+        print(J,Jn)
         J = Jn
         X = mapFactors2( M, factors ) 
         # Calcualte delta of removing an experiment
+        print('Computing variances')
         sub = []
         for i in np.arange(X.shape[0]):
             sub.append( VarAdd(X, X[i,:]) )
         dList = np.argsort( sub )
 #        for i in np.arange( M.shape[0] ):
+        print('Start exchanging',q,'rows')
         for i in dList[0:q]:
             for j in np.arange( M.shape[1] ):
                 Js = []
@@ -322,12 +342,12 @@ def CoordExch1( factors, n, verb=True, obj=Dopt ): # Deff2
                         Jk = 0
                     Js.append( Jk )
                 M[i,j] = np.argmax( Js )
+        print('End mapping')
         Jn = Dopt2( M, factors )
         if q > 0.2*M.shape[0]:
-            q = q-1 
+            q = q-1
     eff =  Deff2(M, factors)
-    if verb:
-        
+    if verb:        
         print( Deff2(M, factors) )
     return M, eff
 
@@ -338,7 +358,7 @@ def CoordExch( factors, n, runs=10, verb=True ):
     M = None
     J = 0
     for i in np.arange( runs ):
-        Mn, Jn = CoordExch1(factors,n)   
+        Mn, Jn = CoordExch1(factors,n,verb=verb)   
         if Jn > J:
             M = Mn
             J = Jn
@@ -413,6 +433,97 @@ def DetMax2( factors, n, m, it=1000, th=99.5, k=1, verb=False ):
         print(w,J)
     return M
 
+#%% Power Analysis test
+    
+
+def SimpleCase():
+    ft = [{'"L1"', '"L2"', '"L3"', '"L4"'}]
+    initGrid(ft)
+#    M = randExp(ft, 8 )
+#    M, J = CoordExch( ft, 8 )
+    M = np.array( [ [0], [1],[2],[3],[0],[1],[2],[3] ])
+    X = mapFactors2( M, ft )
+    return X, ft
+
+def BigCase(slib,nf, MSE=1, alpha=0.05):
+    ft = []
+    for i in np.arange(nf):
+        ft.append( set(["L{}".format(x) for x in np.arange(np.random.randint(3,8))]) )
+    initGrid(ft)
+    M = randExp( ft,slib )
+#    M, J = CoordExch( ft, 8 )
+    X = mapFactors2( M, ft )
+    return CatPower(X , ft, MSE, alpha)
+
+def Lexc(XX_inv, beta_A, i, varis, nvar, MSE=1):
+    """ Compute L excluding the current categorical factor
+    Probably this is not the correct one. """
+    p_i = int( np.sum(varis[0:i]))
+    n_i = varis[i]
+    L = np.zeros( (beta_A.shape[0]-n_i, beta_A.shape[0]) )
+    offset = 0
+    for j in np.arange(0,nvar):
+         p_j = int( np.sum(varis[0:j]))
+         n_j = varis[j]
+         if j > i:
+             offset = n_i
+         if j != i:
+            L[p_j-offset:p_j+n_j-offset,p_j:p_j+n_j] = np.eye(n_j)
+    left = np.transpose( np.dot(L,beta_A) )
+    try:
+        mid = np.linalg.inv( np.dot( np.dot(L, XX_inv),np.transpose(L) ) )/MSE**2
+    except:
+        import pdb
+        pdb.set_trace()
+    right = np.dot(L,beta_A) 
+    lambda_i = np.dot( left, np.dot(mid, right) )
+    return lambda_i
+
+def Linc(XX_inv, beta_A, i, n_i, varis, nvar, MSE=1):
+    """ Compute L by keeping only the current categorical effect of a whole factor.
+    Probably this is the correct one. """
+    L = np.zeros( (n_i, beta_A.shape[0]) )
+    for j in np.arange(0,nvar):
+         p_j = int( np.sum(varis[0:j]))
+         n_j = varis[j]
+         if j == i:
+            L[:,p_j:p_j+n_j] = np.eye(n_j)
+    left = np.transpose( np.dot(L,beta_A) )
+    mid = np.linalg.inv( np.dot( np.dot(L, XX_inv),np.transpose(L) ) )/MSE**2
+    right = np.dot(L,beta_A) 
+    lambda_i = np.dot( left, np.dot(mid, right) )
+    return lambda_i
+   
+def CatPower(X, factors, MSE=1, alpha=0.05):
+    """ Power analysis assuming that all
+    variables are categorical """
+    varis = [1] + [len(x) - 1 for x in factors]
+    if np.sum(varis) != X.shape[1]:
+        raise Exception("Number of variables do not match")
+    n = X.shape[0]
+    p = X.shape[1]-1
+    nvar = len(varis)
+    vec = []
+    for i in np.arange(nvar):
+        n_i = varis[i]
+        vec.append( np.tile( [1,-1], int( np.ceil( n_i/2+1) ) )[0:n_i] )
+    beta_A = np.concatenate( vec )
+    XX = np.dot( np.transpose(X), X) 
+    XX_inv = np.linalg.inv(XX)
+    # skip intercept for the time being. To do: add power analysis for continuous parameters
+    pows = []
+    for i in np.arange(1,nvar):
+        p_i = int( np.sum(varis[0:i]))
+        n_i = varis[i]
+        lambda_i = Linc(XX_inv, beta_A, i, n_i, varis, nvar, MSE)
+#        import pdb
+#        pdb.set_trace()
+        fc_i = FDist.ppf(1-alpha, n_i, n-p-1)
+        pow_i = 1-ncFDist.cdf(fc_i, n_i, n-p-1,lambda_i)
+        pows.append(pow_i)
+    return pows
+        
+#%%    
 
 def blending(A,B):
     blend = np.random.randint(2, size=A.shape[0])

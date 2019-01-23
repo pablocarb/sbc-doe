@@ -12,7 +12,7 @@ import pandas as pd
 from datetime import datetime
 
 def arguments():
-    parser = argparse.ArgumentParser(description='Map plasmids. Pablo Carbonell, SYNBIOCHEM, 2019')
+    parser = argparse.ArgumentParser(description='Map plasmids ICE id using the csv list of entries. Pablo Carbonell, SYNBIOCHEM, 2019')
     parser.add_argument('entries', 
                         help='Entries csv file')
     parser.add_argument('design',  

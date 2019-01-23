@@ -28,18 +28,17 @@ def makeDoeOptDes(fact, outfile, size, seed=None, starts=1040, makeFullFactorial
         name = fact[pos]['component']+str(pos)
         if len(fact[pos]['levels']) > 1:
             nfact += 1
-            # Define as discrete no-empty factors (origin and non-empty promoters at least we need one!)
-            # Genes are in principle excluded
-            if fact[pos]['component'] != 'gene' and '-' not in fact[pos]['levels']:
-                varType = 'Discrete Numeric'
-                theLevels = [ x for x in range(1, len(fact[pos]['levels'])+1 ) ]
-                factors.append( theLevels ) 
-                fnames.append(name)
-            else:
-                varType = 'Categorical'
-                theLevels = [ '"L{}"'.format(x) for x in range(1, len(fact[pos]['levels'])+1 ) ]
-                factors.append(set(theLevels))
-                fnames.append(name)
+            # Currently only workgin with categorical
+ #            if fact[pos]['component'] != 'gene' and '-' not in fact[pos]['levels']:
+#                varType = 'Discrete Numeric'
+#                theLevels = [ x for x in range(1, len(fact[pos]['levels'])+1 ) ]
+#                factors.append( theLevels ) 
+#                fnames.append(name)
+#            else:
+            varType = 'Categorical'
+            theLevels = [ '"L{}"'.format(x) for x in range(1, len(fact[pos]['levels'])+1 ) ]
+            factors.append(set(theLevels))
+            fnames.append(name)
         if fact[pos]['positional'] is not None:
             npos += 1
     if npos >  1:
@@ -199,6 +198,8 @@ def arguments():
                         help='Seed (default: random)')
     parser.add_argument('-n', default=100,
                         help='Number of starts (default: 100)')
+    parser.add_argument('-i', action='store_true',
+                        help='Silent (default: verbose)')
     parser.add_argument('-l', default=None,
                         help='Log file') 
     parser.add_argument('-e', action='store_true',
@@ -211,9 +212,7 @@ def arguments():
                         help='In-house (experimental)')
     return parser
 
-if __name__ == '__main__':
-    parser = arguments()
-    arg = parser.parse_args()
+def run(arg):
     fact, seql, partinfo = read_excel( arg.inputFile )
     if arg.inHouse:
          name = re.sub( '\.[^.]+$', '', os.path.basename(arg.inputFile) )
@@ -230,9 +229,14 @@ if __name__ == '__main__':
          if os.path.exists( outfile ) and not arg.r:
              raise Exception('File exists!')
          factors, fnames = makeDoeOptDes(fact, outfile, size=arg.libSize, seed=arg.x, starts=arg.n, makeFullFactorial=False)
-         M, J = OptDes.CoordExch(factors, n=int(arg.libSize), runs=2)
+         if np.product( [len(x) for x in factors] ) < arg.libSize:
+             raise Exception('Library size is too large!')
+         OptDes.initGrid(factors)
+         M, J = OptDes.CoordExch(factors, n=int(arg.libSize), runs=2, verb= not arg.i)
          M1 = OptDes.MapDesign2(factors, M)
+         X = OptDes.mapFactors2( M, factors )
          df = pd.DataFrame(M1, columns=fnames)
+         pows = OptDes.CatPower(X , factors, MSE=10, alpha=0.05)
          df.to_csv(outfile, index=False, quoting=csv.QUOTE_NONE)
     else:
         name = re.sub( '\.[^.]+$', '', os.path.basename(arg.inputFile) )
@@ -258,4 +262,12 @@ if __name__ == '__main__':
         logfile = os.path.join( outdir, logname)
         with open(logfile, 'w') as handler:
             handler.write( ' '.join(['"{}"'.format(x) for x in sys.argv])+'\n' )
+        J, factors, fnames, pows = None, None, None, None  # To be implemented using OptDes lib
+    if not arg.i:
         print(outfile)
+    return J, factors, fnames, pows
+
+if __name__ == '__main__':
+    parser = arguments()
+    arg = parser.parse_args()
+    run(arg)

@@ -37,6 +37,12 @@ def Dopt2(M, factors):
 def SE(X):
     # Estimation efficiency
     return np.diag( np.linalg.inv( np.dot( np.transpose( X ), X ) ) )
+
+def RPV(X):
+    # Relative prediction variance
+    XXi = np.linalg.inv( np.dot( np.transpose( X ), X ) )
+    return [np.dot( np.dot( np.transpose( X[i,:] ), XXi), X[i,:]) for i in np.arange(X.shape[0])]
+
 def Contrib(X):
     cn = []
     for i in range(0, X.shape[0]):
@@ -308,14 +314,23 @@ def DetMax( factors, n, m, it=1000, th=99.5, k=1 ):
 
 
 
-def CoordExch1( factors, n, verb=True, obj=Dopt ): # Deff2
-    
+def CoordExch1( factors, n, mode='cordexch', verb=True, obj=Dopt ): # Deff2
     # Start with an already sub-optimized design by DetMax
     # (it does not make too mauch difference)
     print('Init design')
  #   M = DetMax2( factors, n, 100 )
     M = randExp( factors, n )
-    print('Start optimization')
+    # No optimization (useful for debugging)
+    if mode == 'random':
+        print('Random')
+        eff =  Deff2(M, factors)
+        return M, eff
+    elif mode == 'detmax':
+        print('DetMax')
+        M = DetMax2( factors, n, 100 )
+        eff =  Deff2(M, factors)
+        return M, eff      
+    print('Start Coord Exchange Optimization')
     # D-Efficiency of the initial design
     J = 0
     Jn = Dopt2(M, factors)
@@ -354,11 +369,11 @@ def CoordExch1( factors, n, verb=True, obj=Dopt ): # Deff2
 
 
 
-def CoordExch( factors, n, runs=10, verb=True ):
+def CoordExch( factors, n, mode='cordexch', runs=10, verb=True ):
     M = None
     J = 0
     for i in np.arange( runs ):
-        Mn, Jn = CoordExch1(factors,n,verb=verb)   
+        Mn, Jn = CoordExch1(factors,n,mode=mode, verb=verb)   
         if Jn > J:
             M = Mn
             J = Jn
@@ -437,15 +452,18 @@ def DetMax2( factors, n, m, it=1000, th=99.5, k=1, verb=False ):
     
 
 def SimpleCase():
+    """ A simple example taken from JMP
+    Power should be = 0.299 """
     ft = [{'"L1"', '"L2"', '"L3"', '"L4"'}]
     initGrid(ft)
 #    M = randExp(ft, 8 )
 #    M, J = CoordExch( ft, 8 )
     M = np.array( [ [0], [1],[2],[3],[0],[1],[2],[3] ])
+    M = np.array([[0],[2],[1],[1],[0],[2],[3],[3]])
     X = mapFactors2( M, ft )
     return X, ft
 
-def BigCase(slib,nf, MSE=1, alpha=0.05):
+def BigCase(slib,nf, RMSE=1, alpha=0.05):
     ft = []
     for i in np.arange(nf):
         ft.append( set(["L{}".format(x) for x in np.arange(np.random.randint(3,8))]) )
@@ -453,7 +471,7 @@ def BigCase(slib,nf, MSE=1, alpha=0.05):
     M = randExp( ft,slib )
 #    M, J = CoordExch( ft, 8 )
     X = mapFactors2( M, ft )
-    return CatPower(X , ft, MSE, alpha)
+    return CatPower(X , ft, RMSE, alpha)
 
 def Lexc(XX_inv, beta_A, i, varis, nvar, MSE=1):
     """ Compute L excluding the current categorical factor
@@ -479,7 +497,7 @@ def Lexc(XX_inv, beta_A, i, varis, nvar, MSE=1):
     lambda_i = np.dot( left, np.dot(mid, right) )
     return lambda_i
 
-def Linc(XX_inv, beta_A, i, n_i, varis, nvar, MSE=1):
+def Linc(XX_inv, beta_A, i, n_i, varis, nvar, RMSE=1):
     """ Compute L by keeping only the current categorical effect of a whole factor.
     Probably this is the correct one. """
     L = np.zeros( (n_i, beta_A.shape[0]) )
@@ -489,14 +507,23 @@ def Linc(XX_inv, beta_A, i, n_i, varis, nvar, MSE=1):
          if j == i:
             L[:,p_j:p_j+n_j] = np.eye(n_j)
     left = np.transpose( np.dot(L,beta_A) )
-    mid = np.linalg.inv( np.dot( np.dot(L, XX_inv),np.transpose(L) ) )/MSE**2
+    mid = np.linalg.inv( np.dot( np.dot(L, XX_inv),np.transpose(L) ) )/(n_i*RMSE**2)
     right = np.dot(L,beta_A) 
     lambda_i = np.dot( left, np.dot(mid, right) )
     return lambda_i
    
-def CatPower(X, factors, MSE=1, alpha=0.05):
+def CatPower(X, factors, RMSE=1, alpha=0.05):
     """ Power analysis assuming that all
-    variables are categorical """
+    variables are categorical.
+    The returned value is different from the one returned by JMP 12 for SimpleCase().
+    However, the result is the same with both the model matrices calculated here 
+    or in JMP, so I assume that X is correct.
+    The result is also identical to the example in Appendix C of 
+    "Power Analysis Tutorial for Experimental Design Software"
+     https://apps.dtic.mil/docs/citations/ADA619843
+    For SimpleCase() change MSE=1.73
+    """
+
     varis = [1] + [len(x) - 1 for x in factors]
     if np.sum(varis) != X.shape[1]:
         raise Exception("Number of variables do not match")
@@ -515,9 +542,7 @@ def CatPower(X, factors, MSE=1, alpha=0.05):
     for i in np.arange(1,nvar):
         p_i = int( np.sum(varis[0:i]))
         n_i = varis[i]
-        lambda_i = Linc(XX_inv, beta_A, i, n_i, varis, nvar, MSE)
-#        import pdb
-#        pdb.set_trace()
+        lambda_i = Linc(XX_inv, beta_A, i, n_i, varis, nvar, RMSE)
         fc_i = FDist.ppf(1-alpha, n_i, n-p-1)
         pow_i = 1-ncFDist.cdf(fc_i, n_i, n-p-1,lambda_i)
         pows.append(pow_i)

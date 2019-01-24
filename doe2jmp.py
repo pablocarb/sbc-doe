@@ -210,10 +210,15 @@ def arguments():
                         help='Full factorial design')
     parser.add_argument('-inHouse', action='store_true',
                         help='In-house (experimental)')
+    parser.add_argument('-RMSE', default=1,
+                        help='Anticipated RMSE for power analysis (default=1)')
+    parser.add_argument('-alpha', default=0.05,
+                        help='Significance level for power analysis (default=0.05)')
     return parser
 
 def run(arg):
     fact, seql, partinfo = read_excel( arg.inputFile )
+    diagnostics = {}
     if arg.inHouse:
          name = re.sub( '\.[^.]+$', '', os.path.basename(arg.inputFile) )
          if arg.O is not None:
@@ -222,7 +227,6 @@ def run(arg):
             outdir = arg.O
          else:
             outdir = os.path.dirname(arg.inputFile)
-        
          outfile = os.path.join( outdir,name+'.optdes' )
          if arg.o:
              outfile = arg.o
@@ -232,11 +236,13 @@ def run(arg):
          if np.product( [len(x) for x in factors] ) < arg.libSize:
              raise Exception('Library size is too large!')
          OptDes.initGrid(factors)
-         M, J = OptDes.CoordExch(factors, n=int(arg.libSize), runs=2, verb= not arg.i)
+         M, J = OptDes.CoordExch(factors, n=int(arg.libSize), runs=2, verb= not arg.i, mode='coordexch')
          M1 = OptDes.MapDesign2(factors, M)
          X = OptDes.mapFactors2( M, factors )
          df = pd.DataFrame(M1, columns=fnames)
-         pows = OptDes.CatPower(X , factors, MSE=10, alpha=0.05)
+         pows = OptDes.CatPower(X , factors, RMSE=arg.RMSE, alpha=arg.alpha)
+         rpvs = OptDes.RPV(X)
+         diagnostics = {'J': J, 'pow': pows, 'rpv': rpvs, 'X': X, 'M': M, 'out': outfile, 'factors': factors}
          df.to_csv(outfile, index=False, quoting=csv.QUOTE_NONE)
     else:
         name = re.sub( '\.[^.]+$', '', os.path.basename(arg.inputFile) )
@@ -265,7 +271,7 @@ def run(arg):
         J, factors, fnames, pows = None, None, None, None  # To be implemented using OptDes lib
     if not arg.i:
         print(outfile)
-    return J, factors, fnames, pows
+    return factors, diagnostics
 
 if __name__ == '__main__':
     parser = arguments()

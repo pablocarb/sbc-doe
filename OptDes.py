@@ -166,6 +166,7 @@ def MapExp( E ):
     """ Read a design, transform into X matrix """
     # Define factors in the same way as for the library
     factors = [ set(np.unique(E[:,i])) for i in np.arange(E.shape[1])]
+    initGrid(factors)
     EE = np.transpose( np.array([ list(np.unique(E[:,i], return_inverse=True)[1]) for i in np.arange(E.shape[1])] ) )
     M = mapFactors( factors, EE )
     return M, factors, EE
@@ -216,16 +217,38 @@ def JMPRead(jmpfile):
         E = pd.read_excel(jmpfile)
     else:
         E = pd.read_csv(jmpfile)
-    D = np.array(E.iloc[:,0:-1])
+    # Check which columns to keep
+    # We assume that categorical variables are of format 'Li' (Exclude pattern or index columns)
+    # Numeric nan factors are not considerd (extra Y column in JMP)
+    cols = []
+    for i in np.arange(0,E.shape[1]):
+        if i == 0:
+            if E.columns[i] == 'Pattern':
+                continue
+        if i == E.shape[1]-1:
+            if E. columns[i] == 'Y':
+                continue
+        if type(E.iloc[0,i]) == str:
+            try:    
+                assert E.iloc[0,i].startswith('L')
+                cols.append(i)
+            except:
+                continue
+        else:
+            try:
+                assert np.isnan(E.iloc[0,i])
+            except:
+                cols.append(i)
+    D = np.array(E.iloc[:,cols])
     # Map into a binary matrix 
     DD, fac, EE = MapExp(D)
     # Compute D-efficiency (wrong use of categorical factors)
-    print( Deff( DD ) )
+ #   print( Deff( DD ) )
     # 38.66
     # Compute D-efficiency (correct)
-    print( Deff2( EE, fac) )
+    Deff =  Deff2( EE, fac) 
     # D Efficiency	 87.98414
-    return fac, DD, EE
+    return fac, DD, EE, Deff
 
     
     
@@ -548,7 +571,8 @@ def CatPower(X, factors, RMSE=1, alpha=0.05):
         pows.append(pow_i)
     return pows
         
-#%%    
+#%% Routines for optimization based on genetic algorithms 
+### The optimization so far is not very efficient  (coordinate exchange works better)   
 
 def blending(A,B):
     blend = np.random.randint(2, size=A.shape[0])
@@ -759,7 +783,7 @@ if __name__ == '__main__':
        {'Red', 'Green', 'Blue' ,'prom1', 'prom2', 'prom3', 'prom4'}, 
        {'prom1', 'prom2', 'prom3', 'prom4'} ]
     
-    factors,DD, EE = JMPRead('/mnt/SBC1/data/OptimalDesign/data/CD2.xlsx')
+    factors,DD, EE, Deff = JMPRead('/mnt/SBC1/data/OptimalDesign/data/test3.csv')
     
     
     M , J = CoordExch(factors, n, runs=10)

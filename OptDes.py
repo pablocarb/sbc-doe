@@ -239,6 +239,7 @@ def JMPRead(jmpfile):
                 assert np.isnan(E.iloc[0,i])
             except:
                 cols.append(i)
+    labels = E.columns[cols]
     D = np.array(E.iloc[:,cols])
     # Map into a binary matrix 
     DD, fac, EE = MapExp(D)
@@ -248,7 +249,7 @@ def JMPRead(jmpfile):
     # Compute D-efficiency (correct)
     Deff =  Deff2( EE, fac) 
     # D Efficiency	 87.98414
-    return fac, DD, EE, Deff
+    return fac, DD, EE, Deff, labels
 
     
     
@@ -260,7 +261,7 @@ def fullFactorial( factors ):
     # For categorical variables, we randomize the levels that are then mapped into the dummy variables
     val = []
     # Add a constant for the intercept
-    val.append( [1] )
+#    val.append( [1] )
     for v in factors:
         val.append( np.arange(len(v)) )
     ffact = []

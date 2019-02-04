@@ -15,6 +15,9 @@ import numpy as np
 import statsmodels.formula.api as smf
 from itertools import product
 from synbiochem.utils import ice_utils
+import sys
+sys.path.append(os.path.join(os.getenv('CODE'),'sbml2doe'))
+from evaluateSBCDesign import evalDesignInfo
 
 def arguments():
     parser = argparse.ArgumentParser(description='MapSamples: Learn design rules. Pablo Carbonell, SYNBIOCHEM, 2018')
@@ -264,7 +267,7 @@ def startSection( nsection, sectitle ):
     ht += '<div id="sec{}">'.format( nsection )
     return ht
 
-def statsHTML(outfile, info, desid, target, doeinfo, ndata, nplasm):
+def statsHTML(outfile, info, desid, target, doeinfo, ndata, nplasm, desinfo=[]):
     """ Output an HTML file with the analysis """
     """ target: targets[t] """
     htm = '<link rel="stylesheet" href="style.css">'
@@ -306,10 +309,29 @@ def statsHTML(outfile, info, desid, target, doeinfo, ndata, nplasm):
         nTable += 1
         htm += nplasm.to_html(index=False)
         htm += '</div>'
+    if len(desinfo) > 0:
+        tab1 = desinfo[0]
+        htm += startSection( nTable, 'Design evaluation:' )
+        nTable += 1
+        htm += tab1.to_html(index=False)
+        htm += '</div>'
+    if len(desinfo) > 2 and desinfo[2] is not None:
+        tab1 = desinfo[2]
+        htm += startSection( nTable, 'Factor power analysis:' )
+        nTable += 1
+        htm += tab1.to_html(index=False)
+        htm += '</div>'
+    if len(desinfo) > 1 and desinfo[1] is not None:
+        tab1 = desinfo[1]
+        htm += startSection( nTable, 'Samples relative prediction variance:' )
+        nTable += 1
+        htm += tab1.to_html(index=False)
+        htm += '</div>'
+        
     with open(outfile, 'w') as h:
         h.write(htm)
 
-def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/learn'):
+def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/learn', desinfo=[]):
     """ Perform some statistical analysis of the factors 
         - df: DataFrame containing the factors and the response;
         - doeinfo: DataFrame generated from the info file;
@@ -359,7 +381,7 @@ def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/lea
         with open(outfile, 'w') as h:
             h.write( cv )
         outfile = os.path.join( outputFolder, desid+'_summary_'+str(i)+'.html' )
-        statsHTML(outfile, info, desid, targets[t], doeinfo, ndata, nplasm)
+        statsHTML(outfile, info, desid, targets[t], doeinfo, ndata, nplasm, desinfo=desinfo)
     return targetsList
 
 def outputFactors(df, designsFolder='/mnt/syno/shared/Designs',
@@ -397,6 +419,13 @@ def outputFactors(df, designsFolder='/mnt/syno/shared/Designs',
             doeinfo = pd.read_excel( doeFile )
         else:
             doeinfo = None
+        # Read design 
+        jfile = os.path.join( designsFolder, des,'Design', 'DoE_'+re.sub('SBCDE', 'SBC', des)+'.dat')
+        if os.path.exists(jfile):
+            tab1, tab2, tab3 = evalDesignInfo(jfile)
+            desinfo = [tab1, tab2, tab3]
+        else:
+            desinfo = []
         # Add "independent" factors
         facdict = {}
         for i in fcdf.index:
@@ -412,7 +441,8 @@ def outputFactors(df, designsFolder='/mnt/syno/shared/Designs',
                 desi = des+'_'+plateId[des]
             else:
                 desi = des+'_'+info
-            targetsList = stats( fulldf, desi, doeinfo, outputFolder )
+            
+            targetsList = stats( fulldf, desi, doeinfo, outputFolder, desinfo=desinfo )
             if len(targetsList) > 0:
                 print( targetsList )
                 outcsv = os.path.join(outputFolder, desi+'_learn.csv')

@@ -13,7 +13,7 @@ import os, re, argparse, csv
 import pandas as pd
 import numpy as np
 import statsmodels.formula.api as smf
-from itertools import product
+from itertools import product, permutations
 from synbiochem.utils import ice_utils
 import sys
 sys.path.append(os.path.join(os.getenv('CODE'),'sbml2doe'))
@@ -53,7 +53,25 @@ def filterSBCid(x):
             sbcid = None
     return sbcid
 
-def mapPlasmids(df, arg, column='Strain ID', mapColumn='Plasmid Name', iceurl="https://ice.synbiochem.co.uk"):
+def patch31():
+    plmap = {
+             'SBC007160': 'SBCDE00031_PL01', 
+             'SBC007162': 'SBCDE00031_PL02',
+             'SBC007164': 'SBCDE00031_PL03',
+             'SBC007166': 'SBCDE00031_PL04',
+             'SBC007168': 'SBCDE00031_PL05',
+             'SBC007170': 'SBCDE00031_PL06',
+             'SBC007172': 'SBCDE00031_PL07',
+             'SBC007174': 'SBCDE00031_PL08',
+             'SBC007176': 'SBCDE00031_PL09',
+             'SBC007178': 'SBCDE00031_PL10',
+             'SBC007180': 'SBCDE00031_PL11',
+             'SBC007182': 'SBCDE00031_PL12'
+             }
+    return plmap
+
+
+def mapPlasmids(df, arg, columns=['Strain ID','Plasmid ID'], mapColumn='Plasmid Name', iceurl="https://ice.synbiochem.co.uk"):
     """ Map plasmids into their names in ICE, they should contain the DoE plasmid name """
     plmap = {}
     if arg.iceEntries is not None and os.path.exists( arg.iceEntries ):
@@ -69,10 +87,11 @@ def mapPlasmids(df, arg, column='Strain ID', mapColumn='Plasmid Name', iceurl="h
             plmap[ icedf.loc[i,partIdix] ] = icedf.loc[i,nameix]
     else:
         ids = set()
-        for x in df.loc[:,column]:
-            sbcid = filterSBCid(x)
-            if sbcid is not None:
-                ids.add( sbcid )
+        for column in columns:
+            for x in df.loc[:,column]:
+                sbcid = filterSBCid(x)
+                if sbcid is not None:
+                    ids.add( sbcid )
         client = ice_utils.ICEClient(iceurl,os.environ['ICE_USERNAME'], os.environ['ICE_PASSWORD'])
         plmap = {}
         for sbcid in ids:
@@ -82,13 +101,15 @@ def mapPlasmids(df, arg, column='Strain ID', mapColumn='Plasmid Name', iceurl="h
                 plmap[ sbcid ] = name
             except:
                 continue
-    for i in range(0, df.shape[0]):
-        x = df.loc[i,column]
-        sbcid = filterSBCid(x)
-        if sbcid is not None and sbcid in plmap:
-            df.loc[i, mapColumn] = plmap[ sbcid ]
-        else:
-            df.loc[i, mapColumn] = 'None'
+    patch = patch31()
+    for x in patch:
+        plmap[x] = patch[x]
+    for column in columns:
+        for i in range(0, df.shape[0]):
+            x = df.loc[i,column]
+            sbcid = filterSBCid(x)
+            if sbcid is not None and sbcid in plmap:
+                df.loc[i, mapColumn] = plmap[ sbcid ]
     return df
 
 def outputSamples(df, outputFolder):
@@ -96,11 +117,8 @@ def outputSamples(df, outputFolder):
     df.to_csv( outfile )
     
 
-    
-def bestPlasmids(ndata, doeinfo):
-    """ Start with best predicted combinations
-    convert into possible plasmids """
-    # Look for allowed positions for each part
+def getDesignSpec(doeinfo):
+   # Look for allowed positions for each part
     constraints = {}
     movpos = set()
     movpart = set()
@@ -130,6 +148,8 @@ def bestPlasmids(ndata, doeinfo):
     const2 = {}
     map2 = {}
     cols = {}
+    combi = {}
+    construct = {}
     for i in doeinfo.index:
         part = doeinfo.loc[i,'Part number']
         pos = doeinfo.loc[i,'DoE position']
@@ -142,32 +162,56 @@ def bestPlasmids(ndata, doeinfo):
         except:
             continue
         cols[pos] = ptype
+        if pos not in combi:
+            combi[pos] = set()
+        combi[pos].add(part)
         partclass = set()
         if ptype == 'origin':
-            partclass.add( 'pl' )
+            pid = 'pl'
+            partclass.add( pid )
+            construct[pos] = pid
         elif ptype == 'resistance':
-            partclass.add( 're' )
+            pid = 're'
+            partclass.add( pid )
+            construct[pos] = pid
         elif ptype == 'promoter':
             pnext = pos + 1
             # if the gene next is mobile
             # then add
             if pnext in movpos:
                 for p in movpos:
-                    partclass.add( 'p_'+'g'+str(p) )
+                    pid = 'p_'+'g'+str(p)
+                    partclass.add( pid )
             else:
-                partclass.add('p_'+'g'+str(pnext) ) 
+                pid = 'p_'+'g'+str(pnext)
+                partclass.add( pid  )
+            pid = 'p_'+'g'+str(pnext)   
+            construct[pos] = pid
+    
         # Not clear how to deal with multple variants: to do
         elif ptype == 'gene':
             if pos in movpos:
                 for p in movpos:
-                    partclass.add( 'g_'+'g'+str(p) )
+                    pid =  'g_'+'g'+str(p)
+                    partclass.add( pid )
             else:
-                partclass.add('g_'+'g'+str(pos))
+                pid = 'g_'+'g'+str(pos)
+                partclass.add( pid )
+            pid = 'g_'+'g'+str(pos)
+            construct[pos] = pid
         const2[pos] = partclass
         for p in partclass:
             if p not in map2:
                 map2[p] = set()
             map2[p].add(part)
+    construct = [ construct[x] for x in sorted(construct)]
+    return constraints, const2, map2, cols, movpos, combi, construct
+    
+def bestPlasmids(ndata, doeinfo):
+    """ Start with best predicted combinations
+    convert into possible plasmids """
+    # Look for allowed positions for each part
+    constraints, const2, map2, cols, movpos, combi, construct = getDesignSpec(doeinfo)
     nplas = []
     for index, row in ndata.iterrows():
         w = []
@@ -175,6 +219,10 @@ def bestPlasmids(ndata, doeinfo):
         pwatch = []
         for pos in sorted( const2 ):
             v = []
+            # Loop through all known instances at the position
+            # Sanity check, i.e. whether:
+            # - They are allowed according to the constraints
+            # - They have not been used yet
             for x in sorted(const2[pos]):
                 if x in row:
                     if row[x] in constraints[pos] and row[x] not in watch:
@@ -202,7 +250,76 @@ def bestPlasmids(ndata, doeinfo):
     coln += [ "{}.{}".format(px, 'pred')]
     return pd.DataFrame( nplas, columns=coln )
 
-def bestCombinations(df, res):
+def spatArrang(construct, movpos):
+    consts = []
+    mobiles = sorted(movpos)
+    perm = [x for x in permutations( mobiles )]
+    for v in perm:
+        c1 = np.arange(len(construct))
+        for y in np.arange(len(v)):
+            c1[mobiles[y]-1] = v[y]-1
+        consts.append(c1)
+    return consts
+
+def getConstruct(construct, z):
+    """ After rearrangement of genes, promoters are relabelled if they are present """
+    geneArr = np.array(construct)[z]
+    proms = set()
+    for x in geneArr:
+        if x.startswith('p_'):
+            proms.add(x)
+    for i in np.arange(len(geneArr)):
+        if geneArr[i].startswith('g_'):
+            pg = re.sub('g_', 'p_', geneArr[i])
+            # Make sure that the promoter exist in the construct
+            if pg in proms and geneArr[i-1].startswith('p_'):
+                geneArr[i-1] = re.sub('g_', 'p_', geneArr[i])
+    return geneArr
+
+
+def filterUnseen(df, ndata, descol):
+    """ Remove cases containing categorical variables not used in the training set.
+    This happens often with promoters in front of mobile genes: not all of them occur """
+    pathol = []
+    for x in descol:
+        s1 = set(df[x].unique())
+        s2 = set(ndata[x].unique())
+        for unk in s2-s1:
+            pathol.append( ndata[x] != unk )
+    if len(pathol) > 0:
+        ix = np.logical_and.reduce( pathol )
+        ndata = ndata.loc[ix,:]
+    return ndata
+
+def mapCombi(nc, arr, descol):
+    """ Map combinations into the future vector """
+    feat = [0 for i in np.arange(len(descol))]
+    for i in np.arange(len(arr)):
+        v = arr[i]
+        val = nc[i]
+        if v in descol:
+            feat[ descol.index(v) ] = val
+            if val == 'None':
+                g1 = re.sub('g_','', arr[i-1])
+                g2 = re.sub('g_','', arr[i+1])
+                v1 = '_'.join([g1,g2])
+                if v1 in descol:
+                    feat[ descol.index(v1) ] = 1
+            elif arr[i].startswith('g_'):
+                try:
+                    assert arr[i+1].startswith('g_')
+                except:
+                    continue
+                g1 = re.sub('g_','', arr[i])
+                g2 = re.sub('g_','', arr[i+1])
+                v1 = '_'.join([g1,g2])
+                if v1 in descol:
+                    feat[ descol.index(v1) ] = 1
+                
+    return feat
+    
+
+def bestCombinations(df, res, doeinfo=None, version=2):
     """ Predict best allowed combinations (experimental)
     Based solely on the values present on the library
     (no suggestion for introducing new changes)
@@ -227,23 +344,48 @@ def bestCombinations(df, res):
     combi = []
     ugroup = []
     ucomb = []
+    VERSION = 2
     # If multiple positional combinations are possible
     if len(pos) > 0:
-        ucol = df.loc[:,pos].drop_duplicates()
-        for x in ucol.index:
-            ix = None
-            for y in ucol.columns:
-                cond = df[y] == ucol.loc[x,y]
-                if ix is None:
-                    ix = cond
-                else:
-                    ix = np.logical_and(ix, cond)
-            ugroup.append(ix)
+        if version == 1:
+            # 1st version tries to predict known combinations
+            # However, it does not work very well
+            ucol = df.loc[:,pos].drop_duplicates()
+            # For each spatial arrangement
+            for x in ucol.index:
+                # Select all rows containing the arrangement
+                ix = None
+                for y in ucol.columns:
+                    cond = df[y] == ucol.loc[x,y]
+                    if ix is None:
+                        ix = cond
+                    else:
+                        ix = np.logical_and(ix, cond)
+                ugroup.append(ix)
+                # Store all instances for the spatial arrangement
+                combo = []
+                for z in descol:
+                    combo.append( df.loc[ix,z].unique() )
+                ucomb.append( combo )
+                combi.extend( [w for w in product( *combo )] )
+        elif VERSION == 2:
+            # To do: this is called twice
+            constraints, const2, map2, cols, movpos, comb, construct = getDesignSpec(doeinfo)
+            # Generate the full combinations without spatial rearrangements
             combo = []
-            for z in descol:
-                combo.append( df.loc[ix,z].unique() )
-            ucomb.append( combo )
-            combi.extend( [w for w in product( *combo )] )
+            for pos in sorted(comb):
+                combo.append( comb[pos] )
+            combi = [w for w in product( *combo )]
+            # To DO: ADD SPATIAL ARRANGEMENTS
+            consts =  spatArrang(construct, movpos)
+            ncombi = []
+            for w in combi:
+                for z in consts:
+                    nc = np.array(w)[z]
+                    arr = getConstruct(construct, z)
+                    feat = mapCombi(nc,arr,descol)
+                    ncombi.append( feat )
+            combi = ncombi
     else:
             combo = []
             for z in descol:
@@ -251,6 +393,7 @@ def bestCombinations(df, res):
             ucomb.append( combo )
             combi.extend( [w for w in product( *combo )] )
     ndata = pd.DataFrame(combi, columns=descol)
+    ndata = filterUnseen(df, ndata, descol)
     ndata['pred'] = res.predict( ndata )
     ndata = ndata.sort_values(by='pred', ascending=False)
     return ndata
@@ -338,11 +481,12 @@ def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/lea
         - outputFolder
     """
     targets = {}
+    targetsList = []
     for j in np.arange(len(df.columns)):
         x = df.columns[j]
         if x.startswith('Target') and x.endswith('Conc'):
             if len( df[x].unique() ) > 1:
-                targets[ x ] = 'Unknown compound'
+                targets[ x ] = None
                 for i in df.index:
                     try:
                         if np.isnan( df.loc[i,df.columns[j-1]] ):
@@ -350,6 +494,7 @@ def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/lea
                     except:
                         pass
                     targets[ x ] = df.loc[i,df.columns[j-1]]
+                    targetsList.append( x )
                     break
             
     factors = []
@@ -358,9 +503,12 @@ def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/lea
             break
         factors.append( x )
     factors.reverse()
-    targetsList = sorted( targets )
+    ftargets = {}
     for i in np.arange(len(targetsList)):
         t = targetsList[i]
+        # Skip columns with no named target
+        if targets[t] is None:
+            continue
         formula = "Q('{}') ~".format( t )
         terms = []
         for f in factors:
@@ -369,26 +517,39 @@ def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/lea
         ols = smf.ols( formula=formula, data=df)
         res = ols.fit()
         info = res.summary()
-        ndata = bestCombinations(df, res)
+        ndata = bestCombinations(df, res, doeinfo)
+        match = df.drop_duplicates('Design')
+        # Merge with predictions, preserve left index
+        vv = pd.merge( ndata, match, how='inner', on=list(ndata.columns)[0:-1], validate='one_to_one', right_index=True) 
+        # Calculate experimental means (o median, etc)
+        mm = df.groupby('Design').mean()
+        for k in vv.index:
+            ndata.loc[k,'Exp'] = float( mm.loc[ mm.index == vv.loc[k,'Design'], t] )
+            ndata.loc[k,'Design'] = vv.loc[k,'Design']
         if doeinfo is not None:
             nplasm = bestPlasmids(ndata, doeinfo)
         else:
             nplasm = None
+        # Keep 1 row per design
+
         outfile = os.path.join( outputFolder, desid+'_summary_'+str(i)+'.csv' )
         cv = 'Design: , {}\n'.format(desid)
         cv +='Target: , {}\n'.format(targets[t])
         cv += info.as_csv()
         with open(outfile, 'w') as h:
             h.write( cv )
-        outfile = os.path.join( outputFolder, desid+'_summary_'+str(i)+'.html' )
+        outname =  desid+'_summary_'+str(i)+'.html' 
+        outfile = os.path.join( outputFolder,outname )
+        ftargets[t] = outname
         statsHTML(outfile, info, desid, targets[t], doeinfo, ndata, nplasm, desinfo=desinfo)
-    return targetsList
+    return targetsList, targets, ftargets
 
 def outputFactors(df, designsFolder='/mnt/syno/shared/Designs',
                   outputFolder='/mnt/SBC1/data/Biomaterials/learn', mapColumn='Plasmid Name',
                   plateColumn='Plate ID', info=None ):
     """ Output the file with the factors and call the learn routine """
     """ Info: add extra info like file name in order to identify better the file """
+    outcome = []
     plateId = {}
     desId = {}
     # Loop through the dts, retrieve design + plasmid id from the mapColumn, 
@@ -435,18 +596,27 @@ def outputFactors(df, designsFolder='/mnt/syno/shared/Designs',
             if design in facdict:
                 rows.append( np.hstack( [df.loc[i,:],fcdf.loc[facdict[design],:]] ) )
         # Perform stats, output results
+        desidrnd = str( np.random.randint(1000) )
         if len(rows) > 0:
             fulldf = pd.DataFrame( rows, columns=np.hstack( [df.columns, fcdf.columns] ) )
             if info is None:
-                desi = des+'_'+plateId[des]
+                desi = des+'_'+'UNKNOWN'+str( desidrnd )
+                if des in plateId:                   
+                    try:
+                        desi = des+'_'+plateId[des]
+                    except: 
+                        pass
             else:
                 desi = des+'_'+info
             
-            targetsList = stats( fulldf, desi, doeinfo, outputFolder, desinfo=desinfo )
+            targetsList, targets, ftargets = stats( fulldf, desi, doeinfo, outputFolder, desinfo=desinfo )
             if len(targetsList) > 0:
                 print( targetsList )
                 outcsv = os.path.join(outputFolder, desi+'_learn.csv')
                 fulldf.to_csv( outcsv )
+                for t in targetsList:
+                    outcome.append( (des,targets[t],ftargets[t]) )
+    return outcome
     
 def readDesign( dfile, des={} ):
     with open(dfile) as h:
@@ -454,32 +624,127 @@ def readDesign( dfile, des={} ):
             row = line.rstrip().split('\t')
             des[ row[0] ] = row[1:]
 
-def addDesignColumns( df, designsFolder='/mnt/syno/shared/Designs', ext='.j0', mapColumn='Plasmid Name'):
+def addDesignColumns( df, designsFolder='/mnt/syno/shared/Designs', ext='.j0', mapColumns=['Plasmid Name','Plasmid ID']):
     """ Create additional columns with the design combinations """
     """ TO DO: transform positional parameters into: promoters in front of genes, gene variants, and pairings  """
-    designs = set()
-    for plasmid in df[mapColumn].unique():
+    for mapColumn in mapColumns:
+        designs = set()
+        for plasmid in df[mapColumn].unique():
+            try:
+                if plasmid.startswith('SBCDE'):
+                    desname = plasmid.split('_')[0]
+                    desno = int( re.sub('SBCDE','',desname) )
+                    desname = "SBCDE%05d" % (desno,)
+                    designs.add( desname )
+            except:
+                continue
+        des = {}
+        for desi in designs:
+            dfile = os.path.join( designsFolder, desi, 'Design', desi+ext )
+            readDesign( dfile, des )
+        for i in df.index:
+            plasmid = df.loc[i,mapColumn]
+            if plasmid in des:
+                for j in range(0, len( des[plasmid] ) ):
+                    df.loc[i,'pos'+str(j)] = des[plasmid][j]
+ 
+def makeSummary(outcome):
+    htm = '<link rel="stylesheet" href="style.css">'
+    summary = pd.DataFrame(columns=['Design','Target','DTS','Link'])    
+    for target in outcome:
+        row = dict( zip(summary.columns, [ target[1],target[2],target[0],'<a href="{}" target="_blank">{}</a>'.format(target[3],target[3]) ]))
+        summary = summary.append( row, ignore_index=True )
+    summary.sort_values( by=['Design','Target','DTS'], inplace=True )
+    pd.set_option('display.max_colwidth',-1)
+    htm += summary.to_html(escape=False,index=False)
+    with open(os.path.join(arg.outFolder,'index.html'), 'w') as h:
+        h.write(htm)
+
+def readPlate(dts,sheet='Media'):
+    val = []
+    d1 = pd.read_excel(dts, sheet)
+    for plate in np.arange(0,5):
+        for i in np.arange(0,8):
+            row = i + plate*11
+            for j in np.arange(0,12):
+                col = j+1
+                try:
+                    val.append(d1.iloc[row,col])
+                except:
+                    continue
+    return val
+
+def addSupplInfo(df, dts, noEmptyTargets=False):
+    """ Add additional columns and filter non-relevant columns """
+    if noEmptyTargets:
+        drop = set()
+        for col in df.columns:
+            if col.startswith('Target'):
+                tarid = ' '.join(col.split(' ')[0:2])
+                if col.endswith('Name'):
+                    try:
+                        if np.isnan( df.loc[0,col] ):
+                            drop.add(tarid)
+                    except:
+                        continue
+        dropList = []
+        for col in df.columns:
+            if col.startswith('Target'):
+                tarid = ' '.join(col.split(' ')[0:2])
+                if tarid in drop:
+                    dropList.append(col)
+        df = df.drop(dropList, axis=1)
+    for col in ['Strain','Plasmid','Media','Treatment']:
+        if col not in df.columns:
+            val = readPlate(dts,sheet='Media')
+            df[col] = val
+    for row in df.index:
+        pid = df.loc[row,'Plasmid Name']
         try:
-            if plasmid.startswith('SBCDE'):
-                designs.add( plasmid.split('_')[0] )
+            if pid.startswith('SBCDE'):
+                sbcd, pln = pid.split('_')
+                df.loc[row,'Design ID'] = sbcd
+        except:
+            df.loc[row,'Design ID'] = None
+    for row in df.index:
+        pid = df.loc[row,'Plasmid ID']
+        try:
+            if np.isnan(pid):
+                df.loc[row,'Plasmid ID'] = df.loc[row,'Strain ID']
         except:
             continue
-    des = {}
-    for desi in designs:
-        dfile = os.path.join( designsFolder, desi, 'Design', desi+ext )
-        readDesign( dfile, des )
-    for i in range(0, df.shape[0]):
-        plasmid = df.loc[i,mapColumn]
-        if plasmid in des:
-            for j in range(0, len( des[plasmid] ) ):
-                df.loc[i,'pos'+str(j)] = des[plasmid][j]
-    
-    
+    df['dts'] = os.path.basename(dts)  
+    cols = ['dts','Plate Number', 'Well', 'Plate ID', 'Description', 'Strain ID',
+            'Strain Name', 'Host ID', 'Host Name', 'Plasmid ID', 'Plasmid Name',
+            'Design ID', 'Media', 'Treatment', 'OD Induction', 'OD Harvest', 
+            'Date Created', 'Creator']
+    for col in df.columns:
+        if col.startswith('Target'):
+            cols.append(col)
+    for missing in set(cols) - set(df.columns):
+        df[missing] = None
+    df = df[cols]
+    nodata = []
+    for row in df.index:
+        empty = True
+        for col in df.columns:
+            if col.endswith('Conc'):
+                try:
+                    if not np.isnan( df.loc[row,col] ):
+                        empty = False
+                except:
+                    empty = False
+        if empty:
+            nodata.append( row )
+    df = df.drop( nodata, axis=0 )
+    return df
     
 
 if __name__ == '__main__':
-    parser = arguments()
+    parser = arguments()    
     arg = parser.parse_args()
+    big = None
+    outcome = []
     for dirName, subdirList, fileList in os.walk( arg.dts ):
         for dts in fileList:
             if dts.lower().endswith( 'xlsm') and not dts.startswith('~'):# and len(dts.split('_')) == 1:
@@ -488,8 +753,18 @@ if __name__ == '__main__':
                 df = samples( os.path.join(dirName, dts) )
                 # Map plasmids into their names in ICE, they should contain the DoE plasmid name 
                 df = mapPlasmids( df, arg )
+                df = addSupplInfo(df, os.path.join(dirName, dts))
+                if big is None:
+                    big = df
+                else: 
+                    big = big.append(df, ignore_index=True)
                 # Create additional columns with the design combinations
                 addDesignColumns( df, designsFolder=arg.designsFolder )
             #    outputSamples( df, outputFolder=arg.outFolder )
                 # Output some statistics about the factors
-                outputFactors( df, designsFolder=arg.designsFolder, outputFolder=arg.outFolder )
+                vals = outputFactors( df, designsFolder=arg.designsFolder, outputFolder=arg.outFolder ) 
+                location = dirName.split(arg.dts)[1]
+                for x in vals:
+                    outcome.append( (os.path.join(location,dts),)+x )
+    makeSummary(outcome)
+    big.to_excel(os.path.join(arg.outFolder,'bigtable.xlsx'), index=False)

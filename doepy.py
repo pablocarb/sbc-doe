@@ -13,13 +13,13 @@ import sys, re
 import argparse
 from datetime import datetime
 import numpy as np
-import pandas as pd
 import brOrligos
 import csv
 import json
 from viscad import viscad
 from mapFactors import mapFolder
 import rpy2.robjects as robjects
+from doebase.doebase import read_excel
 
 ID_COUNTER = 1
 
@@ -111,72 +111,6 @@ def convert_construct(xct, AddBlankPromoter=False):
         ct.append((cid, len(levels), pos, 0, deg))
     return ct, rid
 
-# Transitional function to map old ids to new ICE ids
-def map_oldid():
-    import openpyxl
-    midfile = '/mnt/SBC1/code/sbc-doe/mapping.xlsx'
-    wb = openpyxl.load_workbook(midfile)
-    xl = wb.get_sheet_by_name(wb.get_sheet_names()[0])
-    nl = xl.get_highest_row()
-    mid = {}
-    offset = 1
-    for r in range(1, nl):
-        newid = xl.cell(row=r, column= offset).value
-        oldid = xl.cell(row=r, column= offset+1).value
-        mid[oldid] = newid
-    return mid
-
-
-def write_fasta(fname, seqid, sequence):
-    ow = open(fname, 'w')
-    ow.write('>'+seqid+'\n')
-    ow.write(sequence)
-    ow.close()
-
-def read_excel(e, s=1):
-    df = pd.read_excel(e)
-    mid = None
-    seql = {}
-    fact = {}
-    partinfo = {}
-    offset = 1
-    fcol = 0
-    r = 0
-    while fcol is not None:
-        r += 1
-        fcol = None
-        try:
-            fcol = df.iloc[r-1, offset-1]
-            factor = int( fcol )
-            positional = df.iloc[r-1, offset]
-            component = str( df.iloc[r-1, offset+1] )
-            part = str( df.iloc[r-1, offset+2] )
-            if positional != positional:
-                positional = None
-        except:
-            continue
-        if part is None:
-            if factor in fact:
-                i = len(fact[factor]['levels'])+1
-            else:
-                i = 1
-            part = 'P'+str(factor)+'_'+str(i)
-        seql[part] = None
-        if part is not None and part.startswith('SBCPA'):
-            if mid is None:
-                mid = map_oldid()
-            part = mid[part]
-            seql[part] = None 
-        if factor not in fact:
-            fact[factor] = {'positional': positional,
-                            'component': component,
-                            'levels': [],
-                            'sequence': seql[part]
-            }
-        if part == 'blank':
-            part = None
-        fact[factor]['levels'].append(part)
-    return fact, seql, partinfo
 
 def compact_factors(fact):
     """ This is a temporary solution for positional factors from read_json()
@@ -210,8 +144,6 @@ def read_json(f):
     TO DO: templates are combinations that we want to keep! Modify code...,
     Positional factors are not correctly handled for current definitions
     """
-    mid = None
-    seql = {}
     fact = {}
     partinfo = {}
     jdata = json.load(open(f))
@@ -275,6 +207,8 @@ def getfactors(ct, permut=False):
 
 # Assume promoters "p"  and count number of segments
 def segments(libr, ct):
+    if len(libr) == 0:
+        return [x[0] for x in ct]
     col = set()
     prom = set()
     for l in libr:
@@ -368,7 +302,6 @@ def save_design(design, ct, fname, lat, npos, rid = None, designid = None,
     # Read the design for each factor
     for x in ct:
         fact = x[0]
-        found = False
         # Get the list of designed factors
         # For historical reasons (R), two types are possible
         if type(design['design']) == dict:
@@ -484,13 +417,6 @@ def save_design(design, ct, fname, lat, npos, rid = None, designid = None,
     of.close()
     return libr, libscr
 
-def save_seqs(outpath, constructid, libr, seql):
-    for c in range(0, len(constructid)):
-        seq = ''
-        for s in libr[c]:
-            if s != '':
-                seq += seql[s]
-        write_fasta(path.join(outpath, constructid[c]+'.fasta'), constructid[c], seq)
 
 # If firstcolumn, the first column is the contruct name
 def pcad(f, rid=None, firstcolumn=True, label=True,
@@ -630,6 +556,20 @@ def doeconv(des):
         des['design'][factors[i]] = [i for i in design[i]]
     return des
         
+def singleDesign(ct,datfile):
+    """ If no more than one level, the design has a single trivial solution """
+    desi = {'design': {}}
+    head = []
+    row = []
+    for f in ct:
+        desi['design'][f[0]] = [1]
+        head.append(f[0])
+        row.append(1)
+    with open(datfile, 'w') as h:
+        h.write(','.join(head)+'\n')
+        h.write(','.join([str(i) for i in row]))
+    return [desi]
+
 
 def arguments():
     parser = argparse.ArgumentParser(description='SBC-DeO. Pablo Carbonell, SYNBIOCHEM, 2016')
@@ -657,8 +597,6 @@ def arguments():
                         help='Generate pigeon cad image')
     parser.add_argument('-V', action='store_true',
                         help='Generate viscad diagram')
-    parser.add_argument('-c', action='store_true',  
-                        help='Generate construct fasta files')
     parser.add_argument('-v', 
                         help='Project description')
     parser.add_argument('-j', 
@@ -701,7 +639,6 @@ def run_doe(args=None):
     arg = command_line(parser, args)
     f = arg.f
     p = arg.p
-    cfasta = arg.c
     desid = arg.id
     outpath = arg.O
     sbolgen = arg.b
@@ -750,19 +687,14 @@ def run_doe(args=None):
     s = int(arg.s)
     if not arg.w:
         try:
-            xct, seql, partinfo = read_excel(inputfile, s)            
+            xct, partinfo = read_excel(inputfile, s)            
             ct, rid = convert_construct(xct, AddBlankPromoter=arg.blankPromoter)
         except:
             # old txt format (needs update)
             ct, cid = construct(inputfile)
-            seql = {}
     else:
         xct, partinfo, seed = read_json(inputfile)
         ct, rid = convert_construct(xct, AddBlankPromoter=arg.blankPromoter)
-    if arg.c:
-        for s in seql:
-            write_fasta(path.join(outpath, outfolder, s+'.fasta'), s, seql[s])
-    wd = path.dirname(path.realpath(__file__))
     r = robjects.r
     r.source('mydeo.r')
     permut = r.permut
@@ -799,10 +731,14 @@ def run_doe(args=None):
     if arg.j is not None: # Custom design (column separated)
         if not path.exists(arg.j):
             arg.j = path.join(outfolder, arg.j)
-        if not path.exists(arg.j):
+        if not path.exists(arg.j) and len(factors) > 0:
             raise Exception('DoE file not found')
-        jmp = arg.j
-        doeJMP = readJMP(jmp)
+        if len(factors) > 0:
+            jmp = arg.j
+            doeJMP = readJMP(jmp)
+        else:
+            # Special single level case
+            doeJMP = singleDesign(ct, arg.j)
         for des in range(0, len(doeJMP)):
             if rid is not None:
                 fname0 = designid+'.ji'+str(des)
@@ -857,8 +793,6 @@ def run_doe(args=None):
         for des in range(0, len(doe2)):
             fnameo = designid+'.oad'+str(des)
             libr, libscr = save_design(doe2[des], ct, fnameo, lat, npos, rid, desid, constructid, partinfo, project)
-            if cfasta:
-                save_seqs(outfolder, constructid, libr, seql)
             if sbolgen:
                 save_sbol(desid, libr, constructid, path.join(outfolder))
             if rid is not None:

@@ -11,7 +11,6 @@ To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 import re
 import csv
 import argparse
-import openpyxl
 import string
 import logging
 import datetime

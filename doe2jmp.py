@@ -8,47 +8,13 @@ To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 @author:  Pablo Carbonell, SYNBIOCHEM
 @description: Prepare files for JMP from the DoE sheet
 '''
-from doepy import read_excel
-import OptDes
+from doebase.doebase import read_excel
+from doebase import OptDes
 import argparse
 import os, re, sys
 import csv
 import numpy as np
 import pandas as pd
-
-def makeDoeOptDes(fact, outfile, size, seed=None, starts=1040, makeFullFactorial=False):
-    """ Full DoE script """
-    # To Do: full factorial
-    
-    factors = []
-    fnames = []
-    npos = 0
-    nfact = 0
-    for pos in sorted(fact):
-        name = fact[pos]['component']+str(pos)
-        if len(fact[pos]['levels']) > 1:
-            nfact += 1
-            # Currently only workgin with categorical
- #            if fact[pos]['component'] != 'gene' and '-' not in fact[pos]['levels']:
-#                varType = 'Discrete Numeric'
-#                theLevels = [ x for x in range(1, len(fact[pos]['levels'])+1 ) ]
-#                factors.append( theLevels ) 
-#                fnames.append(name)
-#            else:
-            varType = 'Categorical'
-            theLevels = [ '"L{}"'.format(x) for x in range(1, len(fact[pos]['levels'])+1 ) ]
-            factors.append(set(theLevels))
-            fnames.append(name)
-        if fact[pos]['positional'] is not None:
-            npos += 1
-    if npos >  1:
-        # Total possible arrangements in orthogonal latin squares
-        varType = 'Categorical'
-        theLevels = ['"L{}"'.format(x) for x in range(1, npos*(npos-1)+1)]
-        factors.append( set( theLevels ) )
-        fnames.append('pos')
-        nfact += 1
-    return factors, fnames
 
 
 def makeDoeScript(fact, outfile, size, seed=None, starts=1040, executable=False, makeTable=False, makeFullFactorial=False):
@@ -217,7 +183,7 @@ def arguments():
     return parser
 
 def run(arg):
-    fact, seql, partinfo = read_excel( arg.inputFile )
+    fact, partinfo = read_excel( arg.inputFile )
     diagnostics = {}
     if arg.inHouse:
          name = re.sub( '\.[^.]+$', '', os.path.basename(arg.inputFile) )
@@ -232,18 +198,10 @@ def run(arg):
              outfile = arg.o
          if os.path.exists( outfile ) and not arg.r:
              raise Exception('File exists!')
-         factors, fnames = makeDoeOptDes(fact, outfile, size=arg.libSize, seed=arg.x, starts=arg.n, makeFullFactorial=False)
-         if np.product( [len(x) for x in factors] ) < arg.libSize:
-             raise Exception('Library size is too large!')
-         OptDes.initGrid(factors)
-         M, J = OptDes.CoordExch(factors, n=int(arg.libSize), runs=2, verb= not arg.i, mode='coordexch')
-         M1 = OptDes.MapDesign2(factors, M)
-         X = OptDes.mapFactors2( M, factors )
-         df = pd.DataFrame(M1, columns=fnames)
-         pows = OptDes.CatPower(X , factors, RMSE=arg.RMSE, alpha=arg.alpha)
-         rpvs = OptDes.RPV(X)
-         diagnostics = {'J': J, 'pow': pows, 'rpv': rpvs, 'X': X, 'M': M, 'out': outfile, 'factors': factors}
-         df.to_csv(outfile, index=False, quoting=csv.QUOTE_NONE)
+         factors, fnames, diagnostics = OptDes.makeDoeOptDes(fact, size=arg.libSize, 
+                                                seed=arg.x, starts=arg.n, makeFullFactorial=False,
+                                                RMSE=arg.RMSE, alpha=arg.alpha, verb=not arg.i)
+         diagnostics['df'].to_csv(outfile, index=False, quoting=csv.QUOTE_NONE)
     else:
         name = re.sub( '\.[^.]+$', '', os.path.basename(arg.inputFile) )
         outnametable = name+'_table.jsl'

@@ -7,7 +7,9 @@ To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 
 @author:  Pablo Carbonell, SYNBIOCHEM
 @description: Map samples into their DoEs ids (and generate factors table)
-@usage: mapSamples.py dts -outFolder OUTFOLDER -iceEntries ICEENTRIES -designsFolder DESIGNSFOLDER
+@usage: 
+    - Analyse designs: mapSamples.py dtsFolder -outFolder OUTFOLDER -iceEntries ICEENTRIES -designsFolder DESIGNSFOLDER
+    - Generate only the table: mapSamples.py dtsFolder -utFolder outFolder -iceEntries iceEntriesFile -onlyTable
 '''
 import os, re, argparse, csv, glob
 import pandas as pd
@@ -16,8 +18,13 @@ import statsmodels.formula.api as smf
 from itertools import product, permutations
 from synbiochem.utils import ice_utils
 import sys
-sys.path.append(os.path.join(os.getenv('CODE'),'sbml2doe'))
-from evaluateSBCDesign import evalDesignInfo
+
+def fullImport(arg):
+    """ Import only for design evaluation """
+    if not arg.onlyTable:
+        sys.path.append(os.path.join(os.getenv('CODE'),'sbml2doe'))
+        from evaluateSBCDesign import evalDesignInfo
+        
 
 def arguments():
     parser = argparse.ArgumentParser(description='MapSamples: Learn design rules. Pablo Carbonell, SYNBIOCHEM, 2018')
@@ -29,6 +36,8 @@ def arguments():
                         help='ICE entries csv file (instead of accessing client)')
     parser.add_argument('-designsFolder', default='/mnt/syno/shared/Designs',
                         help='Folder that contains the design templates')
+    parser.add_argument('-onlyTable', action='store_true',
+                        help='Generate only table')
     return parser
 
 def samples(dts, sheetName='Samples'):
@@ -743,6 +752,7 @@ def addSupplInfo(df, dts, noEmptyTargets=False):
 if __name__ == '__main__':
     parser = arguments()    
     arg = parser.parse_args()
+    fullImport(arg)
     big = None
     outcome = []
     for dirName in glob.glob( os.path.join(arg.dts,'*') ):
@@ -760,6 +770,8 @@ if __name__ == '__main__':
                     big = df
                 else: 
                     big = big.append(df, ignore_index=True)
+                if arg.onlyTable:
+                    continue
                 # Create additional columns with the design combinations
                 addDesignColumns( df, designsFolder=arg.designsFolder )
             #    outputSamples( df, outputFolder=arg.outFolder )
@@ -768,5 +780,6 @@ if __name__ == '__main__':
                 location = dirName.split(arg.dts)[1]
                 for x in vals:
                     outcome.append( (os.path.join(location,os.path.basename(dts)),)+x )
-    makeSummary(outcome)
+    if not arg.onlyTable:
+        makeSummary(outcome)
     big.to_excel(os.path.join(arg.outFolder,'bigtable.xlsx'), index=False)

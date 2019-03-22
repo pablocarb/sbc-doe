@@ -9,7 +9,7 @@ To view a copy of this license, visit <http://opensource.org/licenses/MIT/>.
 @description: Map samples into their DoEs ids (and generate factors table)
 @usage: mapSamples.py dts -outFolder OUTFOLDER -iceEntries ICEENTRIES -designsFolder DESIGNSFOLDER
 '''
-import os, re, argparse, csv
+import os, re, argparse, csv, glob
 import pandas as pd
 import numpy as np
 import statsmodels.formula.api as smf
@@ -745,9 +745,11 @@ if __name__ == '__main__':
     arg = parser.parse_args()
     big = None
     outcome = []
-    for dirName, subdirList, fileList in os.walk( arg.dts ):
-        for dts in fileList:
-            if dts.lower().endswith( 'xlsm') and not dts.startswith('~'):# and len(dts.split('_')) == 1:
+    for dirName in glob.glob( os.path.join(arg.dts,'*') ):
+        for dts in glob.glob( os.path.join(dirName, '*') ):
+            if not (dts.endswith('.xlsm') or dts.endswith('.XLSM')):
+                continue
+            if dts.lower().endswith( 'xlsm') and not os.path.basename(dts).startswith('~'):# and len(dts.split('_')) == 1:
                 print( dts )
                 # read a DataFrame with the samples
                 df = samples( os.path.join(dirName, dts) )
@@ -765,6 +767,6 @@ if __name__ == '__main__':
                 vals = outputFactors( df, designsFolder=arg.designsFolder, outputFolder=arg.outFolder ) 
                 location = dirName.split(arg.dts)[1]
                 for x in vals:
-                    outcome.append( (os.path.join(location,dts),)+x )
+                    outcome.append( (os.path.join(location,os.path.basename(dts)),)+x )
     makeSummary(outcome)
     big.to_excel(os.path.join(arg.outFolder,'bigtable.xlsx'), index=False)

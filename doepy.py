@@ -52,37 +52,37 @@ def convert_construct(xct, AddBlankPromoter=False):
     rid = {}
     ct = []
     for p in xct:
-        comp = xct[p]['component']
+        comp = xct[p].component.
         if comp == 'promoter':
             sbcid = False
-            for l in xct[p]['levels']:
+            for l in xct[p].levels:
                 if l.startswith('SBC'):
                     sbcid = True
                     break
             if sbcid:
                 # If there are SBC ids, then anything that is not an sbc id is ignored
                 ll = []
-                for l in xct[p]['levels']:
+                for l in xct[p].levels:
                     if l.startswith('SBC'):
                         lev = l
                     else:
                         lev = None
                     ll.append(lev)
-                xct[p]['levels'] = ll
+                xct[p].levels = ll
             else:
                 # If there are no SBC ids, then '-' are considered empty promoters
                 ll = []
-                for l in xct[p]['levels']:
+                for l in xct[p].levels:
                     if l != '-':
                         lev = l
                     else:
                         lev = None
                     ll.append(lev)
-                xct[p]['levels'] = ll
+                xct[p].levels = ll
                 
     for p in sorted(xct):
-        levels = xct[p]['levels']
-        comp = xct[p]['component']
+        levels = xct[p].levels
+        comp = xct[p].component
         # deg is actual the number of possible values, 
         # in case of promoters we can have multiple empty values
         deg = 0
@@ -94,10 +94,10 @@ def convert_construct(xct, AddBlankPromoter=False):
             deg = len(levels) - len([i for i in filter( lambda h: h is None, levels)])
             if len(levels) ==  deg:
                 deg = 0
-        pos = xct[p]['positional']
+        pos = xct[p].positional
         if pos is None:
             pos = 0
-        cid = str(xct[p]['component'])+str(p)
+        cid = str(xct[p].component)+str(p)
         i = 1
         if AddBlankPromoter and \
            comp == 'promoter' and \
@@ -121,10 +121,10 @@ def compact_factors(fact):
     positional = set()
     watch = set()
     for pos in fact:
-        if fact[pos]['positional']:
+        if fact[pos].positional
             positional.add(pos)
-            levels = fact[pos]['levels']
-            fingerprint = ' '.join(sorted(fact[pos]['levels']))
+            levels = fact[pos].levels
+            fingerprint = ' '.join(sorted(fact[pos].levels))
             watch.add(fingerprint)
             if len(watch) > 1:
                 raise Exception('Multiple positional factors') 
@@ -133,7 +133,7 @@ def compact_factors(fact):
     lpos = sorted(positional)
     llev = sorted(levels)
     for i in range(0, len(lpos)):
-        fact[lpos[i]]['levels'] = [llev[i]]
+        fact[lpos[i]].levels = [llev[i]]
     return fact
             
 

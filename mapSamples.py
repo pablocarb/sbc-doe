@@ -19,8 +19,11 @@ from itertools import product, permutations
 from synbiochem.utils import ice_utils
 import sys
 
+LIVEBUTTON = False
+
 def fullImport(arg):
     """ Import only for design evaluation """
+    global evalDesignInfo
     if not arg.onlyTable:
         sys.path.append(os.path.join(os.getenv('CODE'),'sbml2doe'))
         from evaluateSBCDesign import evalDesignInfo
@@ -75,7 +78,8 @@ def patch31():
              'SBC007176': 'SBCDE00031_PL09',
              'SBC007178': 'SBCDE00031_PL10',
              'SBC007180': 'SBCDE00031_PL11',
-             'SBC007182': 'SBCDE00031_PL12'
+             'SBC007182': 'SBCDE00031_PL12',
+             'SBC010238': 'SBCDE00049_PL01'
              }
     return plmap
 
@@ -97,10 +101,13 @@ def mapPlasmids(df, arg, columns=['Strain ID','Plasmid ID'], mapColumn='Plasmid 
     else:
         ids = set()
         for column in columns:
-            for x in df.loc[:,column]:
-                sbcid = filterSBCid(x)
-                if sbcid is not None:
-                    ids.add( sbcid )
+            try:
+                for x in df.loc[:,column]:
+                    sbcid = filterSBCid(x)
+                    if sbcid is not None:
+                        ids.add( sbcid )
+            except:
+                continue
         client = ice_utils.ICEClient(iceurl,os.environ['ICE_USERNAME'], os.environ['ICE_PASSWORD'])
         plmap = {}
         for sbcid in ids:
@@ -115,10 +122,13 @@ def mapPlasmids(df, arg, columns=['Strain ID','Plasmid ID'], mapColumn='Plasmid 
         plmap[x] = patch[x]
     for column in columns:
         for i in range(0, df.shape[0]):
-            x = df.loc[i,column]
-            sbcid = filterSBCid(x)
-            if sbcid is not None and sbcid in plmap:
-                df.loc[i, mapColumn] = plmap[ sbcid ]
+            try:
+                x = df.loc[i,column]
+                sbcid = filterSBCid(x)
+                if sbcid is not None and sbcid in plmap:
+                    df.loc[i, mapColumn] = plmap[ sbcid ]
+            except:
+                continue
     return df
 
 def outputSamples(df, outputFolder):
@@ -415,7 +425,10 @@ def livetitle(text, nsection, level=2):
     return string.format(str(level), nsection, text, str(level))
 
 def startSection( nsection, sectitle ):
-    ht = livetitle( sectitle, nsection )
+    if LIVEBUTTON:
+        ht = livetitle( sectitle, nsection )
+    else:
+        ht = title( str(nsection+1)+'. '+sectitle )        
     ht += '<div id="sec{}">'.format( nsection )
     return ht
 
@@ -666,6 +679,7 @@ def makeSummary(outcome):
     summary.sort_values( by=['Design','Target','DTS'], inplace=True )
     pd.set_option('display.max_colwidth',-1)
     htm += summary.to_html(escape=False,index=False)
+    summary.to_excel(os.path.join(arg.outFolder,'index.xlsx'))
     with open(os.path.join(arg.outFolder,'index.html'), 'w') as h:
         h.write(htm)
 

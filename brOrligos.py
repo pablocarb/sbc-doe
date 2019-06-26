@@ -50,10 +50,18 @@ def readFiles(doe, info):
                 row = line.rstrip().split('\t')
                 cid = row[0]
                 ci[cid] = []
-                for part in row[1:]:
-                    if part.startswith('promoter') and re.match('.*_[3,4]$', part):
+                # Experimental 26/06/19!!
+                for i in range(1,len(row)):
+                    part = row[i]
+                    parti = ct[cid][i]
+                    if part.startswith('promoter') and parti is None:
                             continue
                     ci[cid].append( part )
+                    
+#                for part in row[1:]:
+#                    if part.startswith('promoter') and re.match('.*_[3,4]$', part):
+#                            continue
+ #                   ci[cid].append( part )
     return ct, ci
     
 def bridges(ct, ci, logFile=None):

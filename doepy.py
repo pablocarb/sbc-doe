@@ -52,7 +52,7 @@ def convert_construct(xct, AddBlankPromoter=False):
     rid = {}
     ct = []
     for p in xct:
-        comp = xct[p].component.
+        comp = xct[p].component
         if comp == 'promoter':
             sbcid = False
             for l in xct[p].levels:
@@ -121,7 +121,7 @@ def compact_factors(fact):
     positional = set()
     watch = set()
     for pos in fact:
-        if fact[pos].positional
+        if fact[pos].positional:
             positional.add(pos)
             levels = fact[pos].levels
             fingerprint = ' '.join(sorted(fact[pos].levels))

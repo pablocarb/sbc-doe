@@ -31,24 +31,24 @@ def makeDoeScript(fact, outfile, size, seed=None, starts=1040, executable=False,
     npos = 0
     nfact = 0
     for pos in sorted(fact):
-        name = fact[pos]['component']+str(pos)
-        if len(fact[pos]['levels']) > 1:
+        name = fact[pos].component+str(pos)
+        if len(fact[pos].levels) > 1:
             nfact += 1
             # Define as discrete no-empty factors (origin and non-empty promoters at least we need one!)
             # Genes are in principle excluded
-            if fact[pos]['component'] != 'gene' and '-' not in fact[pos]['levels']:
+            if fact[pos].component != 'gene' and '-' not in fact[pos].levels:
                 varType = 'Discrete Numeric'
-                theLevels = [ x for x in range(1, len(fact[pos]['levels'])+1 ) ]
+                theLevels = [ x for x in range(1, len(fact[pos].levels)+1 ) ]
                 doe.append( '\t'+'Add Factor( {varType}, {{{levels}}}, "{name}", 0),'.format(varType=varType,
                                                                                            levels=','.join(map(str,theLevels)),
                                                                                            name=name) )
             else:
                 varType = 'Categorical'
-                theLevels = [ '"L{}"'.format(x) for x in range(1, len(fact[pos]['levels'])+1 ) ]
+                theLevels = [ '"L{}"'.format(x) for x in range(1, len(fact[pos].levels)+1 ) ]
                 doe.append( '\t'+'Add Factor( {varType}, {{ {levels} }}, "{name}", 0),'.format(varType=varType,
                                                                                            levels=','.join(map(str,theLevels)),
                                                                                            name=name) )
-        if fact[pos]['positional'] is not None:
+        if fact[pos].positional is not None:
             npos += 1
     if npos >  1:
         # Total possible arrangements in orthogonal latin squares
@@ -121,19 +121,19 @@ def makeTableScript(tableName, fact, outfile):
     script = []
     npos = 0
     for pos in sorted(fact):
-        name = fact[pos]['component']+str(pos)
-        if len(fact[pos]['levels']) > 1:
+        name = fact[pos].component+str(pos)
+        if len(fact[pos].levels) > 1:
             # Define as discrete no-empty factors (at least we need one!)
-            if '-' not in fact[pos]['levels']:
+            if '-' not in fact[pos].levels:
                 varType = 'Discrete'
-                theLevels = [ x for x in range(1, len(fact[pos]['levels'])+1 ) ]
+                theLevels = [ x for x in range(1, len(fact[pos].levels)+1 ) ]
             else:
                 varType = 'Nominal'
-                theLevels = [ "L{}".format(x) for x in range(1, len(fact[pos]['levels'])+1 ) ]
+                theLevels = [ "L{}".format(x) for x in range(1, len(fact[pos].levels)+1 ) ]
             
             col = addColumn( name, varType, theLevels )
             script.append( col )
-        if fact[pos]['positional'] is not None:
+        if fact[pos].positional is not None:
             npos += 1
     if npos >  1:
         theLevels = ["L{}".format(x) for x in range(1, npos*(npos-1)+1)]

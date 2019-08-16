@@ -26,7 +26,7 @@ def fullImport(arg):
     global evalDesignInfo
     if not arg.onlyTable:
         sys.path.append(os.path.join(os.getenv('CODE'),'sbml2doe'))
-        from evaluateSBCDesign import evalDesignInfo
+        from stress_test_scripts.evaluateSBCDesign import evalDesignInfo
         
 
 def arguments():
@@ -775,9 +775,20 @@ if __name__ == '__main__':
                 continue
             if dts.lower().endswith( 'xlsm') and not os.path.basename(dts).startswith('~'):# and len(dts.split('_')) == 1:
                 print( dts )
+                if not dts.endswith('190814QQQMAN07.XLSM'):
+                    continue
                 # read a DataFrame with the samples
                 df = samples( os.path.join(dirName, dts) )
-                # Map plasmids into their names in ICE, they should contain the DoE plasmid name 
+                noEmpty = False
+                for col in df.columns:
+                    if col.endswith('Conc'):
+                        noEmpty |= not np.all(np.isnan(df['Target 1 Conc']))
+                if not noEmpty:
+                    continue
+                print( 'Reading data' )
+                # Map plasmids into their names in ICE, they should contain the DoE plasmid name
+                import pdb
+                pdb.set_trace()
                 df = mapPlasmids( df, arg )
                 df = addSupplInfo(df, os.path.join(dirName, dts))
                 if big is None:
@@ -796,4 +807,5 @@ if __name__ == '__main__':
                     outcome.append( (os.path.join(location,os.path.basename(dts)),)+x )
     if not arg.onlyTable:
         makeSummary(outcome)
-    big.to_excel(os.path.join(arg.outFolder,'bigtable.xlsx'), index=False)
+    if big is not None:
+        big.to_excel(os.path.join(arg.outFolder,'bigtable.xlsx'), index=False)

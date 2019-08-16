@@ -17,7 +17,7 @@ import numpy as np
 import pandas as pd
 
 
-def makeDoeScript(fact, outfile, size, seed=None, starts=1040, executable=False, makeTable=False, makeFullFactorial=False):
+def makeDoeScript(fact, outfile, size, seed=None, starts=1040, executable=False, makeTable=False, makeFullFactorial=False, onlyCategorical=True):
     """ Full Doe Script in JMP """
     doe = []
     if executable:
@@ -36,7 +36,7 @@ def makeDoeScript(fact, outfile, size, seed=None, starts=1040, executable=False,
             nfact += 1
             # Define as discrete no-empty factors (origin and non-empty promoters at least we need one!)
             # Genes are in principle excluded
-            if fact[pos].component != 'gene' and '-' not in fact[pos].levels:
+            if not onlyCategorical and fact[pos].component != 'gene' and '-' not in fact[pos].levels:
                 varType = 'Discrete Numeric'
                 theLevels = [ x for x in range(1, len(fact[pos].levels)+1 ) ]
                 doe.append( '\t'+'Add Factor( {varType}, {{{levels}}}, "{name}", 0),'.format(varType=varType,
@@ -200,7 +200,7 @@ def run(arg):
              raise Exception('File exists!')
          factors, fnames, diagnostics = OptDes.makeDoeOptDes(fact, size=arg.libSize, 
                                                 seed=arg.x, starts=arg.n, makeFullFactorial=False,
-                                                RMSE=arg.RMSE, alpha=arg.alpha, verb=not arg.i)
+                                                RMSE=arg.RMSE, alpha=arg.alpha, verbose=not arg.i)
          diagnostics['df'].to_csv(outfile, index=False, quoting=csv.QUOTE_NONE)
     else:
         name = re.sub( '\.[^.]+$', '', os.path.basename(arg.inputFile) )

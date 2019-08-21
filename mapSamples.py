@@ -190,7 +190,7 @@ def getDesignSpec(doeinfo):
             partclass.add( pid )
             construct[pos] = pid
         elif ptype == 'resistance':
-            pid = 're'
+            pid = 'res'
             partclass.add( pid )
             construct[pos] = pid
         elif ptype == 'promoter':
@@ -260,13 +260,13 @@ def bestPlasmids(ndata, doeinfo):
                             pwatch.append(x)
             w.append(v)
         for h in product( *w ):
-            nplas.append(h+(row['pred'],))
+            nplas.append(h+(row['pred'],row['Exp'],row['Design']))
     coln = []
     px = 1
     for z in sorted(cols):
         coln.append( "{}.{}".format(px, cols[z]))
         px += 1
-    coln += [ "{}.{}".format(px, 'pred')]
+    coln += [ 'pred', 'Exp', 'Design' ]
     return pd.DataFrame( nplas, columns=coln )
 
 def spatArrang(construct, movpos):
@@ -560,10 +560,17 @@ def stats(df, desid, doeinfo=None, outputFolder='/mnt/SBC1/data/Biomaterials/lea
         cv += info.as_csv()
         with open(outfile, 'w') as h:
             h.write( cv )
-        outname =  desid+'_summary_'+str(i)+'.html' 
+        outinfo = desid+'_summary_'+str(i)
+        outname =  outinfo+'.html' 
         outfile = os.path.join( outputFolder,outname )
         ftargets[t] = outname
         statsHTML(outfile, info, desid, targets[t], doeinfo, ndata, nplasm, desinfo=desinfo)
+        ndataf = os.path.join( outputFolder,outinfo+'_constructs.csv')
+        ndata['Target'] = targets[t]
+        ndata.to_csv(ndataf,index=False)
+        nplasm['Target'] = targets[t]
+        nplasmf = os.path.join( outputFolder,outinfo+'_plasmids.csv')
+        nplasm.to_csv(nplasmf,index=False)
     return targetsList, targets, ftargets
 
 def outputFactors(df, designsFolder='/mnt/syno/shared/Designs',
@@ -787,8 +794,6 @@ if __name__ == '__main__':
                     continue
                 print( 'Reading data' )
                 # Map plasmids into their names in ICE, they should contain the DoE plasmid name
-                import pdb
-                pdb.set_trace()
                 df = mapPlasmids( df, arg )
                 df = addSupplInfo(df, os.path.join(dirName, dts))
                 if big is None:

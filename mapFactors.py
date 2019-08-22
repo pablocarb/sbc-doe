@@ -126,6 +126,15 @@ def plasmids(dlib, labels):
         pl[design] = labels[ plasm ]
     return pl
 
+def resistances(dlib, labels):
+    """ Extract plasmid type """
+    pl = {}
+    for design in dlib:
+        plasm = dlib[design][1]
+        pl[design] = labels[ plasm ]
+    return pl
+
+
 def genes(dlib, labels):
     """ Extract genes at each position """
     gl = {}
@@ -197,14 +206,19 @@ def dataExtraction(args):
     cont = contiguousGene(dlib, lab)
     pg = promoterGene(dlib, lab)
     pl = plasmids(dlib, lab)
+    res = resistances(dlib, lab)
     gl = genes(dlib, lab)
     head = ['Design']
-    head.extend(['pl']+sorted(gl)+sorted(pg)+sorted(cont))
+    head.extend(['pl']+['res']+sorted(gl)+sorted(pg)+sorted(cont))
     cw = []
     for design in sorted(dlib):
         row = [design]
         if design in pl:
             row.append(pl[design])
+        else:
+            row.append('None')
+        if design in res:
+            row.append(res[design])
         else:
             row.append('None')
         for gen in sorted(gl):

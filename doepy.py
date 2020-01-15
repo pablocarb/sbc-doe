@@ -695,7 +695,7 @@ def run_doe(args=None):
     else:
         xct, partinfo, seed = read_json(inputfile)
         ct, rid = convert_construct(xct, AddBlankPromoter=arg.blankPromoter)
-    mydeo = os.path.join(os.path.dirname(__file__,'mydeo.r'))
+    mydeo = path.join(path.dirname(__file__,'mydeo.r'))
     r = robjects.r
     r.source(mydeo)
     permut = r.permut

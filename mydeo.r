@@ -11,14 +11,15 @@
                                         # Use always multiples of 2
 
 repo <- "https://cloud.r-project.org"
-if (!require('gmp',quietly=TRUE)) {install.packages('gmp', repos=repo, verbose=FALSE)}
-if (!require('gmp', quietly=TRUE)) {install.packages('numbers', repos=repo, verbose=FALSE)}
-if (!require('crossdes', quietly=TRUE)) {install.packages('crossdes', repos=repo, verbose=FALSE)}
-if (!require('combinat', quietly=TRUE, warn.conflicts = FALSE)) {install.packages('combinat', repos=repo, verbose=FALSE)}
-if (!require('planor', quietly=TRUE)) {install.packages('planor', repos=repo, verbose=FALSE)}
-if (!require('R.utils', quietly=TRUE)) {install.packages('R.utils', repos=repo, verbose=FALSE)}
-if (!require('DoE.base', quietly=TRUE)) {install.packages('DoE.base', repos=repo, verbose=FALSE)}
-
+if (!require('R.utils')) {
+    if (!require('gmp',quietly=TRUE)) {install.packages('gmp', repos=repo, verbose=FALSE)}
+    if (!require('gmp', quietly=TRUE)) {install.packages('numbers', repos=repo, verbose=FALSE)}
+    if (!require('crossdes', quietly=TRUE)) {install.packages('crossdes', repos=repo, verbose=FALSE)}
+    if (!require('combinat', quietly=TRUE, warn.conflicts = FALSE)) {install.packages('combinat', repos=repo, verbose=FALSE)}
+    if (!require('planor', quietly=TRUE)) {install.packages('planor', repos=repo, verbose=FALSE)}
+    if (!require('R.utils', quietly=TRUE)) {install.packages('R.utils', repos=repo, verbose=FALSE)}
+    if (!require('DoE.base', quietly=TRUE)) {install.packages('DoE.base', repos=repo, verbose=FALSE)}
+}
 
 latin.augment <- function(m1, m2) {
     ms <- list()

@@ -214,12 +214,12 @@ def run(arg):
         else:
             outdir = os.path.dirname(arg.inputFile)
         outfile = os.path.join( outdir, outnametable )
-        if arg.o:
-            outfile = arg.o
         if os.path.exists( outfile ) and not arg.r:
             raise Exception('File exists!')
         makeTableScript( name, fact, outfile )
         outfile = os.path.join( outdir, outname )
+        if arg.o:
+            outfile = arg.o
         if os.path.exists( outfile ) and not arg.r:
             raise Exception('File exists!')
         outfile = makeDoeScript( fact, outfile, size=arg.libSize, seed=arg.x, starts=arg.n, executable=arg.e, makeTable=arg.t, makeFullFactorial=arg.f )

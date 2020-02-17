@@ -56,8 +56,12 @@ latin <- function(ntotal) {
     require('crossdes', quietly=TRUE)
     # Find all prime factors
     if (useGMP) {
-        m <- factorize(ntotal)
-        m <-  as.integer(m)
+        if (ntotal > 1) {
+            m <- factorize(ntotal)
+            m <-  as.integer(m)
+        } else {
+            m <- c(1)
+        }
     } else {
         m <- primeFactors(ntotal)
     }

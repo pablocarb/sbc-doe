@@ -22,6 +22,11 @@ def makeDoeScript(fact, outfile, size, seed=None, starts=1040, executable=False,
     doe = []
     if executable:
         doe.append( '//!' )
+    doe.append('// Script for combinatorial library DoE. Pablo Carbonell, SYNBIOCHEM, 2020.')
+    doe.append('// Steps:')
+    doe.append('// 1. Create a new script in JMP, paste and run this code.')
+    doe.append('// 2. Verify if happy with the resulting design or go back in JMP and adjust the DoE parameters (library size, etc.).')
+    doe.append('// 4. Save the design table in csv format.')
     doe.append( 'DOE(' )
     if not makeFullFactorial:
         doe.append( '\t'+'Custom Design,' )

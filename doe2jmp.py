@@ -80,7 +80,7 @@ def makeDoeScript(fact, outfile, size, seed=None, starts=1040, executable=False,
         doe.append( '\t'+'Make Design' )
     doe.append('\t'+'}')
     doe.append( ');')
-    if makeTable:
+    if executable:
         tabfile = re.sub("jsl$", "dat", outfile)
         doe.append( 'Current Data Table() << Save("{}", Text);'.format(tabfile) )
         doe.append( 'Quit();' )

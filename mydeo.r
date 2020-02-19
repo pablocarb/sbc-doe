@@ -11,7 +11,7 @@
                                         # Use always multiples of 2
 
 repo <- "https://cloud.r-project.org"
-if (!require('R.utils')) {
+if (!require('DoE.base')) {
     if (!require('gmp',quietly=TRUE)) {install.packages('gmp', repos=repo, verbose=FALSE)}
     if (!require('gmp', quietly=TRUE)) {install.packages('numbers', repos=repo, verbose=FALSE)}
     if (!require('crossdes', quietly=TRUE)) {install.packages('crossdes', repos=repo, verbose=FALSE)}
@@ -56,12 +56,12 @@ latin <- function(ntotal) {
     require('crossdes', quietly=TRUE)
     # Find all prime factors
     if (useGMP) {
-        if (ntotal > 1) {
-            m <- factorize(ntotal)
-            m <-  as.integer(m)
-        } else {
-            m <- c(1)
-        }
+	if (ntotal > 1) {
+        	m <- factorize(ntotal)
+        	m <-  as.integer(m)
+	} else {
+		m <- c(1)
+	}
     } else {
         m <- primeFactors(ntotal)
     }
